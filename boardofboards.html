@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Board of Boards</title>
+    <link rel="stylesheet" href="/summary.css" />
+  </head>
+  <body>
+    <header class="bob-topbar">
+      <strong>Board of Boards</strong>
+      <span id="status" class="toast"></span>
+      <div class="bob-topbar-actions">
+        <button id="refreshBtn">Refresh</button>
+        <button id="manageBtn">Manage boards</button>
+        <a class="bob-open-link" href="/">Back to board →</a>
+      </div>
+    </header>
+
+    <main id="boards" class="bob-boards"></main>
+
+    <dialog id="cardModal">
+      <form method="dialog" id="cardForm">
+        <h2>Edit Card</h2>
+        <label>Name<input id="cardName" /></label>
+        <label>Description<textarea id="cardDescription" rows="4"></textarea></label>
+        <menu>
+          <button type="button" id="cancelCardBtn">Cancel</button>
+          <button type="submit" class="primary">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="manageModal">
+      <div class="bob-manage">
+        <h2>Manage boards</h2>
+        <p class="bob-hint">
+          Pick which boards show up here, and map each board's own columns
+          to the Active and Next bands. A column can be mapped to either,
+          both, or neither.
+        </p>
+        <div id="manageBoardsList"></div>
+        <menu>
+          <button type="button" id="closeManageBtn">Close</button>
+        </menu>
+      </div>
+    </dialog>
+
+    <script>
+      let state = null;
+      const el = (id) => document.getElementById(id);
+
+      async function api(path, body) {
+        const response = await fetch(path, {
+          method: body === undefined ? "GET" : "POST",
+          headers: body === undefined ? {} : { "Content-Type": "application/json" },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        const payload = await response.json();
+        if (!response.ok || payload.status === "error") {
+          throw new Error(payload.reason || "Request failed");
+        }
+        return payload;
+      }
+
+      function showStatus(message, error = false) {
+        const status = el("status");
+        status.textContent = message;
+        status.className = error ? "toast error" : "toast";
+      }
+
+      async function run(action, successMessage) {
+        try {
+          await action();
+          await load();
+          showStatus(successMessage);
+        } catch (err) {
+          showStatus(err.message, true);
+        }
+      }
+
+      async function load() {
+        state = await api("/api/boardofboards/summary");
+        render();
+      }
+
+      function render() {
+        const container = el("boards");
+        container.replaceChildren();
+        if (!state.boards.length) {
+          const empty = document.createElement("p");
+          empty.className = "bob-empty";
+          empty.textContent = 'No boards picked yet. Use "Manage boards" to add some.';
+          container.append(empty);
+          return;
+        }
+        state.boards.forEach((board, index) => {
+          container.append(renderBoard(board, index));
+        });
+      }
+
+      function renderBoard(board, index) {
+        const col = document.createElement("section");
+        col.className = "bob-board";
+
+        const header = document.createElement("div");
+        header.className = "bob-board-header";
+        const title = document.createElement("h2");
+        title.textContent = board.name;
+        header.append(title);
+
+        const moveLeft = document.createElement("button");
+        moveLeft.className = "bob-move";
+        moveLeft.textContent = "←";
+        moveLeft.disabled = index === 0;
+        moveLeft.onclick = () => moveBoard(board.uuid, -1);
+        const moveRight = document.createElement("button");
+        moveRight.className = "bob-move";
+        moveRight.textContent = "→";
+        moveRight.disabled = index === state.boards.length - 1;
+        moveRight.onclick = () => moveBoard(board.uuid, 1);
+        header.append(moveLeft, moveRight);
+
+        const openLink = document.createElement("a");
+        openLink.className = "bob-open-link";
+        openLink.href = `/?board=${encodeURIComponent(board.uuid)}`;
+        openLink.textContent = "Open board →";
+        header.append(openLink);
+
+        col.append(header);
+
+        const objective = document.createElement("p");
+        objective.className = "bob-objective";
+        objective.textContent = board.objective || "Set an objective…";
+        objective.title = "Click to edit objective";
+        objective.onclick = () => editObjective(board);
+        col.append(objective);
+
+        col.append(renderBand("Active", board, board.active_cards));
+        col.append(renderBand("Next", board, board.next_cards));
+
+        return col;
+      }
+
+      function renderBand(label, board, cards) {
+        const wrap = document.createElement("div");
+        wrap.className = "bob-band";
+        const heading = document.createElement("h3");
+        heading.textContent = label;
+        wrap.append(heading);
+        const list = document.createElement("div");
+        list.className = "bob-card-list";
+        for (const card of cards) {
+          list.append(renderCard(board, card, label));
+        }
+        wrap.append(list);
+        return wrap;
+      }
+
+      function renderCard(board, card, band) {
+        const row = document.createElement("div");
+        row.className = "bob-card" + (card.selected ? " selected" : "");
+
+        const name = document.createElement("span");
+        name.className = "bob-card-name";
+        name.textContent = card.name;
+        name.title = "Click to edit";
+        name.onclick = () => openCardModal(card);
+        row.append(name);
+
+        const select = document.createElement("select");
+        select.className = "bob-status-select";
+        for (const column of board.columns) {
+          const opt = document.createElement("option");
+          opt.value = column.uuid;
+          opt.textContent = column.name;
+          select.append(opt);
+        }
+        if (band === "Active") {
+          const opt = document.createElement("option");
+          opt.value = "__selected__";
+          opt.textContent = "★ Selected";
+          select.append(opt);
+        }
+        select.value = card.column_uuid;
+        select.onchange = () => {
+          const value = select.value;
+          if (value === "__selected__") {
+            run(
+              () => api("/api/boardofboards/cards/toggle_selected", { card_uuid: card.uuid }),
+              "Updated",
+            );
+            return;
+          }
+          run(
+            () => api("/api/kanban/cards/move", { card_uuid: card.uuid, column_uuid: value, index: 0 }),
+            "Moved",
+          );
+        };
+        row.append(select);
+
+        return row;
+      }
+
+      function moveBoard(boardUuid, direction) {
+        const order = state.boards.map((board) => board.uuid);
+        const index = order.indexOf(boardUuid);
+        const swapWith = index + direction;
+        if (swapWith < 0 || swapWith >= order.length) return;
+        [order[index], order[swapWith]] = [order[swapWith], order[index]];
+        run(() => api("/api/boardofboards/boards/reorder", { board_uuids: order }), "Reordered");
+      }
+
+      function editObjective(board) {
+        const value = prompt("Objective", board.objective || "");
+        if (value === null) return;
+        run(
+          () => api("/api/kanban/boards/set_objective", { board_uuid: board.uuid, objective: value }),
+          "Objective updated",
+        );
+      }
+
+      let modalCard = null;
+      function openCardModal(card) {
+        modalCard = card;
+        el("cardName").value = card.name || "";
+        el("cardDescription").value = card.description || "";
+        el("cardModal").showModal();
+      }
+      el("cancelCardBtn").onclick = () => el("cardModal").close();
+      el("cardForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const card = modalCard;
+        el("cardModal").close();
+        run(
+          () =>
+            api("/api/kanban/cards/update", {
+              card_uuid: card.uuid,
+              name: el("cardName").value,
+              description: el("cardDescription").value,
+              participants: card.participants,
+              owner: card.owner,
+            }),
+          "Card updated",
+        );
+      });
+
+      function renderManage() {
+        const container = el("manageBoardsList");
+        container.replaceChildren();
+        for (const board of state.available_boards) {
+          container.append(renderManageBoard(board));
+        }
+      }
+
+      function renderManageBoard(board) {
+        const wrap = document.createElement("div");
+        wrap.className = "bob-manage-board";
+        const title = document.createElement("h3");
+        title.textContent = board.name + (board.picked ? " (in summary)" : "");
+        wrap.append(title);
+
+        const table = document.createElement("table");
+        table.className = "bob-manage-table";
+        const headerRow = document.createElement("tr");
+        headerRow.innerHTML = "<th>Column</th><th>Active</th><th>Next</th>";
+        table.append(headerRow);
+
+        const activeSet = new Set(board.active_column_uuids);
+        const nextSet = new Set(board.next_column_uuids);
+        for (const column of board.columns) {
+          const row = document.createElement("tr");
+          const nameCell = document.createElement("td");
+          nameCell.textContent = column.name;
+          const activeCell = document.createElement("td");
+          const activeBox = document.createElement("input");
+          activeBox.type = "checkbox";
+          activeBox.checked = activeSet.has(column.uuid);
+          activeBox.dataset.role = "active";
+          activeBox.dataset.column = column.uuid;
+          activeCell.append(activeBox);
+          const nextCell = document.createElement("td");
+          const nextBox = document.createElement("input");
+          nextBox.type = "checkbox";
+          nextBox.checked = nextSet.has(column.uuid);
+          nextBox.dataset.role = "next";
+          nextBox.dataset.column = column.uuid;
+          nextCell.append(nextBox);
+          row.append(nameCell, activeCell, nextCell);
+          table.append(row);
+        }
+        wrap.append(table);
+
+        const actions = document.createElement("div");
+        actions.className = "bob-manage-actions";
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = board.picked ? "Update mapping" : "Add to summary";
+        saveBtn.onclick = () => {
+          const activeUuids = [...table.querySelectorAll('input[data-role="active"]:checked')].map(
+            (box) => box.dataset.column,
+          );
+          const nextUuids = [...table.querySelectorAll('input[data-role="next"]:checked')].map(
+            (box) => box.dataset.column,
+          );
+          run(
+            () =>
+              api("/api/boardofboards/boards/pick", {
+                board_uuid: board.uuid,
+                active_column_uuids: activeUuids,
+                next_column_uuids: nextUuids,
+              }),
+            "Saved",
+          ).then(renderManage);
+        };
+        actions.append(saveBtn);
+
+        if (board.picked) {
+          const removeBtn = document.createElement("button");
+          removeBtn.textContent = "Remove from summary";
+          removeBtn.onclick = () =>
+            run(() => api("/api/boardofboards/boards/unpick", { board_uuid: board.uuid }), "Removed").then(
+              renderManage,
+            );
+          actions.append(removeBtn);
+        }
+        wrap.append(actions);
+
+        return wrap;
+      }
+
+      el("refreshBtn").onclick = () => load().catch((err) => showStatus(err.message, true));
+      el("manageBtn").onclick = () => {
+        renderManage();
+        el("manageModal").showModal();
+      };
+      el("closeManageBtn").onclick = () => el("manageModal").close();
+
+      load().catch((err) => showStatus(err.message, true));
+    </script>
+  </body>
+</html>
