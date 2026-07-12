@@ -76,6 +76,11 @@ class BoardOfBoardsLogic:
         ]
         return {
             "boards": boards_out,
+            # Every peer this session knows about, for the card-edit modal's
+            # owner/members picker - not board-scoped (unlike kanban.html's
+            # picker, which restricts to current board peers) since Overview
+            # spans every board and has no per-board peer topic to filter by.
+            "people": list(self._people_by_uuid().values()),
         }
 
     def _board_summary(self, board: PRSPNode, settings: dict) -> dict:

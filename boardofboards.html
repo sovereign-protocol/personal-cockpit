@@ -23,6 +23,9 @@
         <h2>Edit Card</h2>
         <label>Name<input id="cardName" /></label>
         <label>Description<textarea id="cardDescription" rows="4"></textarea></label>
+        <label>Owner<select id="cardOwner"></select></label>
+        <label>Members</label>
+        <div id="participantPicker" class="user-picker"></div>
         <menu>
           <button type="button" id="deleteCardBtn" class="danger">Delete</button>
           <button type="button" id="cancelCardBtn">Cancel</button>
@@ -88,6 +91,8 @@
     <script>
       let state = null;
       let modalCard = null;
+      let modalParticipants = [];
+      let modalOwner = null;
       let settingsBoard = null;
       let shareBoardUuid = null;
       let identity = null;
@@ -191,6 +196,7 @@
         } else {
           controls.append(iconButton(ICON_EXPAND, "Expand", () => setExpanded(board, true)));
         }
+        controls.append(iconButton(ICON_SHARE, "Share", () => openShareModal(board)));
         controls.append(iconButton(ICON_SETTINGS, "Settings", () => openBoardSettings(board)));
         tools.append(controls, boardStatus(board));
         header.append(tools);
@@ -483,6 +489,71 @@
         return String(value || "").replace(/["\\]/g, "\\$&");
       }
 
+      function personFor(id) {
+        return (state.people || []).find((person) => person.id === id) || { id, name: id ? id.slice(0, 8) : "", picture: "" };
+      }
+
+      function pickerCandidates() {
+        // Not board-scoped (unlike kanban.html's picker) - Overview spans
+        // every board and has no per-board peer topic here, so this offers
+        // every peer the session knows about instead.
+        const known = state.people || [];
+        const already = modalParticipants
+          .filter((id) => !known.some((person) => person.id === id))
+          .map((id) => personFor(id));
+        return [...known, ...already];
+      }
+
+      function renderUserPicker() {
+        const container = el("participantPicker");
+        container.replaceChildren();
+        for (const person of pickerCandidates()) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "user-choice";
+          if (modalParticipants.includes(person.id)) button.classList.add("selected");
+          const avatar = document.createElement("span");
+          avatar.className = "participant-avatar";
+          if (person.picture) {
+            avatar.style.backgroundImage = `url("${cssUrl(person.picture)}")`;
+          } else {
+            avatar.textContent = initials(person.name);
+          }
+          const name = document.createElement("span");
+          name.textContent = person.name;
+          button.append(avatar, name);
+          button.onclick = () => {
+            const index = modalParticipants.indexOf(person.id);
+            if (index >= 0) {
+              modalParticipants.splice(index, 1);
+              if (modalOwner === person.id) modalOwner = null;
+            } else if (person.id) {
+              modalParticipants.push(person.id);
+            }
+            renderUserPicker();
+            renderOwnerSelect();
+          };
+          container.append(button);
+        }
+      }
+
+      function renderOwnerSelect() {
+        const select = el("cardOwner");
+        select.replaceChildren();
+        const blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = "Unassigned";
+        select.append(blank);
+        for (const id of modalParticipants) {
+          const option = document.createElement("option");
+          option.value = id;
+          option.textContent = personFor(id).name;
+          select.append(option);
+        }
+        select.value = modalParticipants.includes(modalOwner) ? modalOwner : "";
+        modalOwner = select.value || null;
+      }
+
       function setExpanded(board, expanded) {
         return run(
           () => api("/api/boardofboards/boards/settings", { board_uuid: board.uuid, expanded }),
@@ -560,6 +631,13 @@
         modalCard = card;
         el("cardName").value = card.name || "";
         el("cardDescription").value = card.description || "";
+        modalParticipants = Array.isArray(card.participants) ? [...card.participants] : [];
+        modalOwner = card.owner || null;
+        renderUserPicker();
+        renderOwnerSelect();
+        el("cardOwner").onchange = () => {
+          modalOwner = el("cardOwner").value || null;
+        };
         el("cardModal").showModal();
       }
 
@@ -582,8 +660,8 @@
               card_uuid: card.uuid,
               name: el("cardName").value,
               description: el("cardDescription").value,
-              participants: card.participants,
-              owner: card.owner,
+              participants: dedupe(modalParticipants),
+              owner: modalOwner || null,
             }),
           "Card updated",
         );
@@ -672,7 +750,21 @@
       };
 
       el("closeShareBtn").onclick = () => el("shareModal").close();
-      load().catch((err) => showToast(err.message, true));
+
+      async function openShareModalFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const boardUuid = params.get("share");
+        if (!boardUuid) return;
+        const board = (state.boards || []).find((entry) => entry.uuid === boardUuid);
+        if (board) await openShareModal(board);
+        params.delete("share");
+        const query = params.toString();
+        window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
+      }
+
+      load()
+        .then(openShareModalFromUrl)
+        .catch((err) => showToast(err.message, true));
 
       function isEditingBoards() {
         // Refreshing rebuilds #boards from scratch, which would yank focus

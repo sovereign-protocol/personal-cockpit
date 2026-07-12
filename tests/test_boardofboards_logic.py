@@ -129,6 +129,19 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertNotIn("involved_labels", card)
         self.assertNotIn("involved_people", card)
 
+    def test_summary_payload_lists_known_people_for_the_card_picker(self):
+        runtime = self.runtime(8527)
+        kanban: KanbanLogic = runtime.logic
+        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        kanban.set_user_profile("Andrea")
+        my_id = kanban.user_profile().uuid
+
+        payload = bob.summary_payload()
+
+        self.assertIn("people", payload)
+        self.assertEqual([p["id"] for p in payload["people"]], [my_id])
+        self.assertEqual(payload["people"][0]["name"], "Andrea")
+
     def test_summary_counts_cards_in_discussion(self):
         runtime = self.runtime(8525)
         kanban: KanbanLogic = runtime.logic
