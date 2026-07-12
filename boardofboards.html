@@ -4,16 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Personal Overview</title>
+    <link rel="stylesheet" href="/shared.css" />
     <link rel="stylesheet" href="/summary.css" />
   </head>
   <body>
+    <div id="toast" class="toast"></div>
     <header class="bob-topbar">
       <strong>Personal Overview</strong>
-      <span id="status" class="toast"></span>
       <div class="bob-topbar-actions">
-        <button id="refreshBtn">Refresh</button>
         <button id="newBoardBtn">+ New board</button>
-        <a class="bob-open-link" href="/">Back to board</a>
       </div>
     </header>
 
@@ -25,6 +24,7 @@
         <label>Name<input id="cardName" /></label>
         <label>Description<textarea id="cardDescription" rows="4"></textarea></label>
         <menu>
+          <button type="button" id="deleteCardBtn" class="danger">Delete</button>
           <button type="button" id="cancelCardBtn">Cancel</button>
           <button type="submit" class="primary">Save</button>
         </menu>
@@ -75,6 +75,16 @@
       </div>
     </dialog>
 
+    <dialog id="confirmModal">
+      <h2 id="confirmModalTitle">Action</h2>
+      <p id="confirmModalMessage" class="confirm-text"></p>
+      <menu>
+        <button type="button" id="confirmModalCancelBtn">Cancel</button>
+        <button type="button" id="confirmModalConfirmBtn" class="danger">Confirm</button>
+      </menu>
+    </dialog>
+
+    <script src="/shared.js"></script>
     <script>
       let state = null;
       let modalCard = null;
@@ -96,19 +106,13 @@
         return payload;
       }
 
-      function showStatus(message, error = false) {
-        const status = el("status");
-        status.textContent = message;
-        status.className = error ? "toast error" : "toast";
-      }
-
       async function run(action, successMessage) {
         try {
           await action();
           await load();
-          showStatus(successMessage);
+          showToast(successMessage);
         } catch (err) {
-          showStatus(err.message, true);
+          showToast(err.message, true);
         }
       }
 
@@ -137,33 +141,35 @@
         const expanded = expandedBoards();
         const collapsed = collapsedBoards();
         expanded.forEach((board, index) => {
-          container.append(renderExpandedBoard(board, index));
+          container.append(renderExpandedBoard(board, index, expanded.length));
         });
-        chunk(collapsed, 5).forEach((boards) => {
+        chunk(collapsed, 5).forEach((boards, chunkIndex) => {
           const lane = document.createElement("section");
           lane.className = "bob-collapsed-lane";
-          boards.forEach((board) => lane.append(renderCollapsedBoard(board)));
+          boards.forEach((board, i) =>
+            lane.append(renderCollapsedBoard(board, chunkIndex * 5 + i, collapsed.length)),
+          );
           container.append(lane);
         });
       }
 
-      function renderExpandedBoard(board, index) {
+      function renderExpandedBoard(board, index, total) {
         const panel = document.createElement("section");
         panel.className = "bob-board expanded";
-        panel.append(boardHeader(board, true, index));
+        panel.append(boardHeader(board, true, index, total));
         panel.append(renderBand("Active", board, board.active_cards));
         panel.append(renderBand("Next", board, board.next_cards));
         return panel;
       }
 
-      function renderCollapsedBoard(board) {
+      function renderCollapsedBoard(board, index, total) {
         const tile = document.createElement("section");
         tile.className = "bob-board collapsed";
-        tile.append(boardHeader(board, false));
+        tile.append(boardHeader(board, false, index, total));
         return tile;
       }
 
-      function boardHeader(board, expanded, index = 0) {
+      function boardHeader(board, expanded, index = 0, total = 1) {
         const header = document.createElement("div");
         header.className = "bob-board-header";
         const main = document.createElement("div");
@@ -178,15 +184,14 @@
         tools.className = "bob-board-tools";
         const controls = document.createElement("div");
         controls.className = "bob-board-controls";
+        controls.append(moveButton("<", index === 0, () => moveBoard(board.uuid, -1)));
+        controls.append(moveButton(">", index >= total - 1, () => moveBoard(board.uuid, 1)));
         if (expanded) {
-          const expandedList = expandedBoards();
-          controls.append(moveButton("<", index === 0, () => moveBoard(board.uuid, -1)));
-          controls.append(moveButton(">", index >= expandedList.length - 1, () => moveBoard(board.uuid, 1)));
-          controls.append(smallButton("Collapse", () => setExpanded(board, false)));
+          controls.append(iconButton(ICON_COLLAPSE, "Collapse", () => setExpanded(board, false)));
         } else {
-          controls.append(smallButton("Expand", () => setExpanded(board, true)));
+          controls.append(iconButton(ICON_EXPAND, "Expand", () => setExpanded(board, true)));
         }
-        controls.append(smallButton("Settings", () => openBoardSettings(board)));
+        controls.append(iconButton(ICON_SETTINGS, "Settings", () => openBoardSettings(board)));
         tools.append(controls, boardStatus(board));
         header.append(tools);
         return header;
@@ -225,12 +230,30 @@
       }
 
       function objectiveElement(board) {
-        const objective = document.createElement("p");
-        objective.className = "bob-objective";
-        objective.textContent = board.objective || "Set an objective...";
-        objective.title = "Click to edit objective";
-        objective.onclick = () => editObjective(board);
-        return objective;
+        // A fixed-height 2-line box, bottom-aligned: short objectives sit
+        // low (away from the title above), longer ones fill both lines and
+        // reach up near the title. Line-clamp+ellipsis only applies while
+        // not focused, so editing still shows the full text being typed.
+        const wrap = document.createElement("div");
+        wrap.className = "bob-objective-wrap";
+        const div = document.createElement("div");
+        div.className = "bob-objective";
+        div.contentEditable = "true";
+        div.textContent = board.objective || "";
+        div.title = board.objective || "";
+        div.onkeydown = (event) => {
+          if (event.key === "Enter") event.preventDefault();
+        };
+        div.onblur = () => {
+          const value = div.textContent.trim();
+          div.title = value;
+          run(
+            () => api("/api/kanban/boards/set_objective", { board_uuid: board.uuid, objective: value }),
+            "Objective updated",
+          );
+        };
+        wrap.append(div);
+        return wrap;
       }
 
       function boardStatus(board) {
@@ -364,7 +387,7 @@
       function adoptCard(card) {
         const event = firstTransitionEvent(card.transition);
         if (!event?.peer_addr) {
-          showStatus("No peer version available", true);
+          showToast("No peer version available", true);
           return;
         }
         run(
@@ -407,31 +430,6 @@
       function firstTransitionEvent(info) {
         const events = (info?.events || [info]).filter((event) => event && event.type !== "in_agreement");
         return events[0] || null;
-      }
-
-      function transitionSymbol(type) {
-        return (
-          {
-            peer_made_changes: "+",
-            local_missing_node: "+",
-            local_made_changes: "~",
-            peer_missing_node: "-",
-            divergence: "!",
-          }[type] || "*"
-        );
-      }
-
-      function transitionLabel(info) {
-        const event = firstTransitionEvent(info) || info;
-        const peer = peerLabel(event?.peer_addr);
-        const labels = {
-          peer_made_changes: `Changes from ${peer}`,
-          local_made_changes: `My changes not in ${peer}`,
-          local_missing_node: `Only in ${peer}`,
-          peer_missing_node: `Missing in ${peer}`,
-          divergence: `Diverged from ${peer}`,
-        };
-        return labels[event?.type] || "Difference";
       }
 
       function peerLabel(address) {
@@ -493,18 +491,14 @@
       }
 
       function moveBoard(boardUuid, direction) {
-        const order = expandedBoards().map((board) => board.uuid);
+        const board = (state.boards || []).find((entry) => entry.uuid === boardUuid);
+        const group = board?.expanded ? expandedBoards() : collapsedBoards();
+        const order = group.map((entry) => entry.uuid);
         const index = order.indexOf(boardUuid);
         const swapWith = index + direction;
         if (swapWith < 0 || swapWith >= order.length) return;
         [order[index], order[swapWith]] = [order[swapWith], order[index]];
         run(() => api("/api/boardofboards/boards/reorder", { board_uuids: order }), "Reordered");
-      }
-
-      function editObjective(board) {
-        const value = prompt("Objective", board.objective || "");
-        if (value === null) return;
-        run(() => api("/api/kanban/boards/set_objective", { board_uuid: board.uuid, objective: value }), "Objective updated");
       }
 
       function openBoardSettings(board) {
@@ -570,6 +564,14 @@
       }
 
       el("cancelCardBtn").onclick = () => el("cardModal").close();
+      el("deleteCardBtn").onclick = () => {
+        const card = modalCard;
+        if (!card) return;
+        confirmAction("Delete card?", "This removes the card from its board.", () => {
+          el("cardModal").close();
+          return run(() => api("/api/kanban/cards/delete", { card_uuid: card.uuid }), "Card deleted");
+        });
+      };
       el("cardForm").addEventListener("submit", (event) => {
         event.preventDefault();
         const card = modalCard;
@@ -586,8 +588,6 @@
           "Card updated",
         );
       });
-
-      el("refreshBtn").onclick = () => load().catch((err) => showStatus(err.message, true));
 
       el("newBoardBtn").onclick = () => {
         el("newBoardName").value = "Kanban Board";
@@ -648,7 +648,7 @@
         await loadIdentity();
         const token = encodeConnectToken(identity.address, [shareBoardUuid, identity.profileUuid]);
         await navigator.clipboard.writeText(token);
-        showStatus("Token copied");
+        showToast("Token copied");
       };
 
       el("shareConnectBtn").onclick = () => {
@@ -656,20 +656,37 @@
         try {
           payload = decodeConnectToken(el("shareConnectInput").value);
         } catch (err) {
-          showStatus("Invalid token", true);
+          showToast("Invalid token", true);
           return;
         }
         run(() => api("/api/join_discussion", { address: payload.address, topic_uuids: payload.topic_uuids }), "Connected");
       };
 
       el("shareUnshareBtn").onclick = () => {
-        if (!confirm("Stop discussing this board with everyone currently on it? The board itself is not deleted.")) return;
         el("shareModal").close();
-        run(() => api("/api/kanban/boards/unshare", { board_uuid: shareBoardUuid }), "Stopped discussing this board");
+        confirmAction(
+          "Stop discussing this board?",
+          "This stops discussing it with everyone currently on it. The board itself is not deleted.",
+          () => run(() => api("/api/kanban/boards/unshare", { board_uuid: shareBoardUuid }), "Stopped discussing this board"),
+        );
       };
 
       el("closeShareBtn").onclick = () => el("shareModal").close();
-      load().catch((err) => showStatus(err.message, true));
+      load().catch((err) => showToast(err.message, true));
+
+      function isEditingBoards() {
+        // Refreshing rebuilds #boards from scratch, which would yank focus
+        // out from under an in-progress edit (objective text, card fields,
+        // the status dropdown) - skip the poll while one of those is
+        // focused rather than fighting the user's cursor.
+        const active = document.activeElement;
+        if (!active || !el("boards").contains(active)) return false;
+        return active.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName);
+      }
+      setInterval(() => {
+        if (isEditingBoards()) return;
+        load().catch((err) => showToast(err.message, true));
+      }, 1500);
     </script>
   </body>
 </html>

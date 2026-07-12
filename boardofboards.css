@@ -9,6 +9,7 @@ body {
   color: #1b1f23;
   --bob-lane-width: 560px;
   --bob-topbar-height: 3.6rem;
+  --muted: #57606a;
 }
 
 .bob-topbar {
@@ -28,23 +29,6 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.toast {
-  font-size: 0.85rem;
-  color: #57606a;
-  min-height: 1em;
-}
-
-.toast.error {
-  color: #cf222e;
-}
-
-.bob-open-link {
-  color: #0969da;
-  text-decoration: none;
-  font-size: 0.85rem;
-  white-space: nowrap;
 }
 
 .bob-boards {
@@ -88,7 +72,6 @@ body {
 .bob-board.collapsed {
   width: 100%;
   flex: 0 0 auto;
-  min-height: 8.5rem;
 }
 
 .bob-board-header {
@@ -181,23 +164,56 @@ body {
   cursor: default;
 }
 
+/* The board-tools cluster (move arrows + expand/collapse + settings) is a
+   tight row, so its icon buttons use a smaller variant of the shared
+   .icon-btn sizing rather than the default 32px. */
+.bob-board-controls .icon-btn {
+  width: 1.7rem;
+  min-width: 1.7rem;
+  min-height: 1.7rem;
+}
+
+.bob-board-controls .icon-svg {
+  width: 14px;
+  height: 14px;
+}
+
+.bob-objective-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 2.3em;
+  margin: 0.25rem 0 0;
+}
+
 .bob-objective {
   display: -webkit-box;
-  margin: 0.25rem 0 0;
-  font-size: 0.85rem;
-  color: #24292f;
-  cursor: pointer;
-  line-height: 1.25;
-  max-height: 2.5em;
-  min-height: 0;
-  overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #24292f;
+  line-height: 1.15;
+  padding: 0.1rem 0.2rem;
+  cursor: text;
+  outline: none;
+}
+
+.bob-objective:empty::before {
+  content: "Set an objective...";
+  color: #8b949e;
 }
 
 .bob-objective:hover {
-  color: #1b1f23;
-  text-decoration: underline dotted;
+  border-color: #d0d7de;
+}
+
+.bob-objective:focus {
+  -webkit-line-clamp: unset;
+  border-color: var(--teal);
+  background: #f6f8fa;
 }
 
 .bob-stat {
@@ -437,13 +453,7 @@ body {
 
 dialog {
   border: none;
-  border-radius: 10px;
-  padding: 1.25rem;
   width: min(480px, 90vw);
-}
-
-dialog::backdrop {
-  background: rgba(15, 20, 25, 0.45);
 }
 
 dialog label {
@@ -455,45 +465,23 @@ dialog label {
 dialog input,
 dialog textarea,
 dialog select {
-  width: 100%;
   margin-top: 0.2rem;
   padding: 0.4rem;
   border: 1px solid #d0d7de;
-  border-radius: 6px;
-  font: inherit;
 }
 
-dialog menu {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0;
-  margin: 0.75rem 0 0;
+dialog textarea {
+  resize: vertical;
 }
 
 button {
   font: inherit;
   border: 1px solid #d0d7de;
   background: #f6f8fa;
-  border-radius: 6px;
-  padding: 0.35rem 0.7rem;
   cursor: pointer;
 }
 
-button.primary {
-  background: #0969da;
-  border-color: #0969da;
-  color: #ffffff;
-}
-
-button.danger {
-  background: #cf222e;
-  border-color: #cf222e;
-  color: #ffffff;
-}
-
 .bob-manage {
-  width: min(480px, 90vw);
   max-height: 86vh;
   overflow-y: auto;
 }
@@ -513,6 +501,7 @@ button.danger {
   body {
     background: #0d1117;
     color: #e6edf3;
+    --muted: #8b949e;
   }
   .bob-topbar,
   .bob-board {
@@ -529,6 +518,16 @@ button.danger {
   .bob-band-sources,
   .bob-card-people-empty {
     color: #c9d1d9;
+  }
+  .bob-objective:empty::before {
+    color: #6e7681;
+  }
+  .bob-objective:hover {
+    border-color: #30363d;
+  }
+  .bob-objective:focus {
+    border-color: var(--teal);
+    background: #0d1117;
   }
   .bob-board-tools {
     background: #0d1117;

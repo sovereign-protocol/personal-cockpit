@@ -212,6 +212,30 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
             [board_c_uuid, board_a.uuid, board_b_uuid],
         )
 
+    def test_reorder_boards_also_works_on_the_collapsed_group(self):
+        # reorder_boards used to only ever touch expanded boards (and force
+        # expanded=True on whatever it reordered) - collapsed board tiles
+        # had no way to be reordered at all. It should now reorder whichever
+        # group the given uuids belong to, and leave expanded/collapsed
+        # untouched either way.
+        runtime = self.runtime(8526)
+        kanban: KanbanLogic = runtime.logic
+        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        board_a = kanban.ensure_board()
+        board_b_uuid = kanban.create_board("Board B").value
+        board_c_uuid = kanban.create_board("Board C").value
+        bob.pick_board(board_a.uuid, [], [])  # expanded; must stay unaffected
+
+        bob.reorder_boards([board_c_uuid, board_b_uuid])
+
+        payload = bob.summary_payload()
+        by_uuid = {b["uuid"]: b for b in payload["boards"]}
+        self.assertTrue(by_uuid[board_a.uuid]["expanded"])
+        self.assertFalse(by_uuid[board_c_uuid]["expanded"])
+        self.assertFalse(by_uuid[board_b_uuid]["expanded"])
+        collapsed_order = [b["uuid"] for b in payload["boards"] if not b["expanded"]]
+        self.assertEqual(collapsed_order, [board_c_uuid, board_b_uuid])
+
     def test_summary_drops_a_picked_board_that_no_longer_exists(self):
         runtime = self.runtime(8506)
         kanban: KanbanLogic = runtime.logic

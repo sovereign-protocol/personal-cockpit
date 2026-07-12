@@ -260,17 +260,25 @@ class BoardOfBoardsLogic:
         return SessionResult("ok", value=board_uuid)
 
     def reorder_boards(self, board_uuids: list[str]) -> SessionResult:
+        # Expanded and collapsed boards each have their own left/right
+        # ordering in the UI, so reordering only ever touches the group
+        # the moved board already belongs to - the caller always passes
+        # the full uuid list for that one group, never a mix of both.
         metadata = self._metadata()
         settings = metadata.setdefault("board_settings", {})
-        existing_boards = {
+        valid_uuids = {board.uuid for board in self.kanban.boards()}
+        mentioned = [uuid for uuid in board_uuids if uuid in valid_uuids]
+        if not mentioned:
+            return SessionResult("ok", value=[])
+        expanded_flag = bool(settings.get(mentioned[0], {}).get("expanded", False))
+        same_group = {
             board.uuid for board in self.kanban.boards()
-            if settings.get(board.uuid, {}).get("expanded", False)
+            if bool(settings.get(board.uuid, {}).get("expanded", False)) == expanded_flag
         }
-        ordered = [uuid for uuid in board_uuids if uuid in existing_boards]
-        ordered.extend(uuid for uuid in sorted(existing_boards) if uuid not in ordered)
+        ordered = [uuid for uuid in mentioned if uuid in same_group]
+        ordered.extend(uuid for uuid in sorted(same_group) if uuid not in ordered)
         for order, board_uuid in enumerate(ordered):
             item = dict(settings.get(board_uuid, {}))
-            item["expanded"] = True
             item["order"] = order
             settings[board_uuid] = item
         return SessionResult("ok", value=ordered)
