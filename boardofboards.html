@@ -3,17 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Board of Boards</title>
+    <title>Personal Overview</title>
     <link rel="stylesheet" href="/summary.css" />
   </head>
   <body>
     <header class="bob-topbar">
-      <strong>Board of Boards</strong>
+      <strong>Personal Overview</strong>
       <span id="status" class="toast"></span>
       <div class="bob-topbar-actions">
         <button id="refreshBtn">Refresh</button>
-        <button id="manageBtn">Manage boards</button>
-        <a class="bob-open-link" href="/">Back to board →</a>
+        <button id="newBoardBtn">+ New board</button>
+        <a class="bob-open-link" href="/">Back to board</a>
       </div>
     </header>
 
@@ -31,23 +31,56 @@
       </form>
     </dialog>
 
-    <dialog id="manageModal">
+    <dialog id="boardSettingsModal">
       <div class="bob-manage">
-        <h2>Manage boards</h2>
-        <p class="bob-hint">
-          Pick which boards show up here, and map each board's own columns
-          to the Active and Next bands. A column can be mapped to either,
-          both, or neither.
-        </p>
-        <div id="manageBoardsList"></div>
+        <h2 id="boardSettingsTitle">Board settings</h2>
+        <div id="boardSettingsFields"></div>
         <menu>
-          <button type="button" id="closeManageBtn">Close</button>
+          <button type="button" id="cancelBoardSettingsBtn">Cancel</button>
+          <button type="button" id="saveBoardSettingsBtn" class="primary">Save</button>
+        </menu>
+      </div>
+    </dialog>
+
+    <dialog id="newBoardModal">
+      <form method="dialog" id="newBoardForm">
+        <h2>New board</h2>
+        <label>Name<input id="newBoardName" value="Kanban Board" /></label>
+        <label>Copy from (optional)<select id="newBoardTemplate"></select></label>
+        <menu>
+          <button type="button" id="cancelNewBoardBtn">Cancel</button>
+          <button type="submit" class="primary">Create</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="shareModal">
+      <div class="bob-manage">
+        <h2 id="shareModalTitle">Share board</h2>
+        <p class="bob-hint">Copy a token and send it to someone so they can connect to this board.</p>
+        <div class="bob-manage-actions">
+          <button type="button" id="copyShareTokenBtn">Copy token</button>
+        </div>
+        <p class="bob-hint">Received a token from someone else? Paste it here to connect.</p>
+        <div class="bob-manage-actions">
+          <input id="shareConnectInput" placeholder="Paste a token" />
+          <button type="button" id="shareConnectBtn">Connect</button>
+        </div>
+        <div class="bob-manage-actions">
+          <button type="button" id="shareUnshareBtn" class="danger">Stop discussing this board</button>
+        </div>
+        <menu>
+          <button type="button" id="closeShareBtn">Close</button>
         </menu>
       </div>
     </dialog>
 
     <script>
       let state = null;
+      let modalCard = null;
+      let settingsBoard = null;
+      let shareBoardUuid = null;
+      let identity = null;
       const el = (id) => document.getElementById(id);
 
       async function api(path, body) {
@@ -84,89 +117,194 @@
         render();
       }
 
+      async function loadIdentity() {
+        if (identity) return identity;
+        const kanbanState = await api("/api/kanban/board");
+        identity = { address: kanbanState.address, profileUuid: kanbanState.user_profile.uuid };
+        return identity;
+      }
+
       function render() {
         const container = el("boards");
         container.replaceChildren();
         if (!state.boards.length) {
           const empty = document.createElement("p");
           empty.className = "bob-empty";
-          empty.textContent = 'No boards picked yet. Use "Manage boards" to add some.';
+          empty.textContent = "No boards yet.";
           container.append(empty);
           return;
         }
-        state.boards.forEach((board, index) => {
-          container.append(renderBoard(board, index));
+        const expanded = expandedBoards();
+        const collapsed = collapsedBoards();
+        expanded.forEach((board, index) => {
+          container.append(renderExpandedBoard(board, index));
+        });
+        chunk(collapsed, 5).forEach((boards) => {
+          const lane = document.createElement("section");
+          lane.className = "bob-collapsed-lane";
+          boards.forEach((board) => lane.append(renderCollapsedBoard(board)));
+          container.append(lane);
         });
       }
 
-      function renderBoard(board, index) {
-        const col = document.createElement("section");
-        col.className = "bob-board";
+      function renderExpandedBoard(board, index) {
+        const panel = document.createElement("section");
+        panel.className = "bob-board expanded";
+        panel.append(boardHeader(board, true, index));
+        panel.append(renderBand("Active", board, board.active_cards));
+        panel.append(renderBand("Next", board, board.next_cards));
+        return panel;
+      }
 
+      function renderCollapsedBoard(board) {
+        const tile = document.createElement("section");
+        tile.className = "bob-board collapsed";
+        tile.append(boardHeader(board, false));
+        return tile;
+      }
+
+      function boardHeader(board, expanded, index = 0) {
         const header = document.createElement("div");
         header.className = "bob-board-header";
-        const title = document.createElement("h2");
+        const main = document.createElement("div");
+        main.className = "bob-board-main";
+        const title = document.createElement("a");
+        title.className = "bob-board-title";
+        title.href = `/?board=${encodeURIComponent(board.uuid)}`;
         title.textContent = board.name;
-        header.append(title);
+        main.append(title, objectiveElement(board));
+        header.append(main);
+        const tools = document.createElement("div");
+        tools.className = "bob-board-tools";
+        const controls = document.createElement("div");
+        controls.className = "bob-board-controls";
+        if (expanded) {
+          const expandedList = expandedBoards();
+          controls.append(moveButton("<", index === 0, () => moveBoard(board.uuid, -1)));
+          controls.append(moveButton(">", index >= expandedList.length - 1, () => moveBoard(board.uuid, 1)));
+          controls.append(smallButton("Collapse", () => setExpanded(board, false)));
+        } else {
+          controls.append(smallButton("Expand", () => setExpanded(board, true)));
+        }
+        controls.append(smallButton("Settings", () => openBoardSettings(board)));
+        tools.append(controls, boardStatus(board));
+        header.append(tools);
+        return header;
+      }
 
-        const moveLeft = document.createElement("button");
-        moveLeft.className = "bob-move";
-        moveLeft.textContent = "←";
-        moveLeft.disabled = index === 0;
-        moveLeft.onclick = () => moveBoard(board.uuid, -1);
-        const moveRight = document.createElement("button");
-        moveRight.className = "bob-move";
-        moveRight.textContent = "→";
-        moveRight.disabled = index === state.boards.length - 1;
-        moveRight.onclick = () => moveBoard(board.uuid, 1);
-        header.append(moveLeft, moveRight);
+      function expandedBoards() {
+        return (state.boards || []).filter((board) => board.expanded);
+      }
 
-        const openLink = document.createElement("a");
-        openLink.className = "bob-open-link";
-        openLink.href = `/?board=${encodeURIComponent(board.uuid)}`;
-        openLink.textContent = "Open board →";
-        header.append(openLink);
+      function collapsedBoards() {
+        return (state.boards || []).filter((board) => !board.expanded);
+      }
 
-        col.append(header);
+      function chunk(items, size) {
+        const groups = [];
+        for (let index = 0; index < items.length; index += size) {
+          groups.push(items.slice(index, index + size));
+        }
+        return groups;
+      }
 
+      function moveButton(text, disabled, action) {
+        const button = smallButton(text, action);
+        button.classList.add("bob-move");
+        button.disabled = disabled;
+        return button;
+      }
+
+      function smallButton(text, action) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "bob-small-btn";
+        button.textContent = text;
+        button.onclick = action;
+        return button;
+      }
+
+      function objectiveElement(board) {
         const objective = document.createElement("p");
         objective.className = "bob-objective";
-        objective.textContent = board.objective || "Set an objective…";
+        objective.textContent = board.objective || "Set an objective...";
         objective.title = "Click to edit objective";
         objective.onclick = () => editObjective(board);
-        col.append(objective);
+        return objective;
+      }
 
-        col.append(renderBand("Active", board, board.active_cards));
-        col.append(renderBand("Next", board, board.next_cards));
+      function boardStatus(board) {
+        const status = document.createElement("div");
+        status.className = "bob-board-status";
+        status.append(
+          statItem(board.discussion_count, "discussion"),
+          statItem(board.active_cards.length, "active"),
+          statItem(board.next_cards.length, "next"),
+        );
+        return status;
+      }
 
-        return col;
+      function statItem(value, label) {
+        const item = document.createElement("span");
+        item.className = "bob-stat";
+        item.textContent = `${value} ${label}`;
+        return item;
       }
 
       function renderBand(label, board, cards) {
         const wrap = document.createElement("div");
         wrap.className = "bob-band";
         const heading = document.createElement("h3");
-        heading.textContent = label;
+        const title = document.createElement("span");
+        title.textContent = label;
+        const sources = document.createElement("span");
+        sources.className = "bob-band-sources";
+        sources.textContent = `(${bandColumnNames(board, label).join(", ") || "not set"})`;
+        heading.append(title, sources);
         wrap.append(heading);
         const list = document.createElement("div");
         list.className = "bob-card-list";
+        let lastRelevance = null;
         for (const card of cards) {
+          if (lastRelevance === "owner" && card.relevance === "participant") {
+            const divider = document.createElement("div");
+            divider.className = "bob-relevance-divider";
+            list.append(divider);
+          }
           list.append(renderCard(board, card, label));
+          lastRelevance = card.relevance;
         }
         wrap.append(list);
         return wrap;
       }
 
+      function bandColumnNames(board, label) {
+        const sourceUuids = label === "Active" ? board.active_column_uuids : board.next_column_uuids;
+        const columnsByUuid = new Map(board.columns.map((column) => [column.uuid, column.name]));
+        return sourceUuids.map((uuid) => columnsByUuid.get(uuid)).filter(Boolean);
+      }
+
       function renderCard(board, card, band) {
         const row = document.createElement("div");
         row.className = "bob-card" + (card.selected ? " selected" : "");
+        applyCardTransition(row, card);
 
-        const name = document.createElement("span");
+        const body = document.createElement("div");
+        body.className = "bob-card-body";
+        const name = document.createElement("button");
+        name.type = "button";
         name.className = "bob-card-name";
         name.textContent = card.name;
         name.title = "Click to edit";
         name.onclick = () => openCardModal(card);
-        row.append(name);
+        body.append(name);
+        const description = document.createElement("p");
+        description.className = "bob-card-description";
+        description.textContent = card.description || "";
+        body.append(description);
+        row.append(body);
+        row.append(cardDiscussionTools(card));
+        row.append(cardPeople(card));
 
         const select = document.createElement("select");
         select.className = "bob-status-select";
@@ -179,31 +317,183 @@
         if (band === "Active") {
           const opt = document.createElement("option");
           opt.value = "__selected__";
-          opt.textContent = "★ Selected";
+          opt.textContent = "Selected";
           select.append(opt);
         }
         select.value = card.column_uuid;
         select.onchange = () => {
           const value = select.value;
           if (value === "__selected__") {
-            run(
-              () => api("/api/boardofboards/cards/toggle_selected", { card_uuid: card.uuid }),
-              "Updated",
-            );
+            run(() => api("/api/boardofboards/cards/toggle_selected", { card_uuid: card.uuid }), "Updated");
             return;
           }
-          run(
-            () => api("/api/kanban/cards/move", { card_uuid: card.uuid, column_uuid: value, index: 0 }),
-            "Moved",
-          );
+          run(() => api("/api/kanban/cards/move", { card_uuid: card.uuid, column_uuid: value, index: 0 }), "Moved");
         };
         row.append(select);
-
         return row;
       }
 
+      function applyCardTransition(row, card) {
+        const info = card.transition;
+        if (!info || info.type === "in_agreement") return;
+        row.classList.add("diff", `event-${info.type}`);
+        row.dataset.transitionSymbol = transitionSymbol(info.type);
+        row.title = transitionLabel(info);
+      }
+
+      function cardDiscussionTools(card) {
+        const wrap = document.createElement("div");
+        wrap.className = "bob-card-discussion-tools";
+        const info = card.transition;
+        if (!info || info.type === "in_agreement") return wrap;
+        if (!info.keep_mine_active) wrap.append(adoptButton(card));
+        wrap.append(keepMineMenu(card));
+        return wrap;
+      }
+
+      function adoptButton(card) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "bob-adopt";
+        button.textContent = "Adopt";
+        button.title = "Adopt the peer version";
+        button.onclick = () => adoptCard(card);
+        return button;
+      }
+
+      function adoptCard(card) {
+        const event = firstTransitionEvent(card.transition);
+        if (!event?.peer_addr) {
+          showStatus("No peer version available", true);
+          return;
+        }
+        run(
+          () =>
+            api("/api/kanban/adopt", {
+              source_addr: event.peer_addr,
+              node_uuid: card.uuid,
+              adopt_absence: event.type === "peer_missing_node",
+            }),
+          "Adopted",
+        );
+      }
+
+      const PERSPECTIVE_MENU_OPTIONS = [
+        { value: "none", label: "..." },
+        { value: "kept_mine", label: "Keep mine" },
+        { value: "pushed_back", label: "Push back" },
+      ];
+
+      function keepMineMenu(card) {
+        const select = document.createElement("select");
+        select.className = "bob-keep-mine-menu";
+        select.title = "Keep mine keeps my version; Push back asks peers to adopt it";
+        for (const option of PERSPECTIVE_MENU_OPTIONS) {
+          const opt = document.createElement("option");
+          opt.value = option.value;
+          opt.textContent = option.label;
+          select.append(opt);
+        }
+        select.value = card.perspective_state || "none";
+        select.dataset.state = select.value;
+        select.onchange = () =>
+          run(
+            () => api("/api/kanban/perspective", { node_uuid: card.uuid, state: select.value }),
+            "Updated",
+          );
+        return select;
+      }
+
+      function firstTransitionEvent(info) {
+        const events = (info?.events || [info]).filter((event) => event && event.type !== "in_agreement");
+        return events[0] || null;
+      }
+
+      function transitionSymbol(type) {
+        return (
+          {
+            peer_made_changes: "+",
+            local_missing_node: "+",
+            local_made_changes: "~",
+            peer_missing_node: "-",
+            divergence: "!",
+          }[type] || "*"
+        );
+      }
+
+      function transitionLabel(info) {
+        const event = firstTransitionEvent(info) || info;
+        const peer = peerLabel(event?.peer_addr);
+        const labels = {
+          peer_made_changes: `Changes from ${peer}`,
+          local_made_changes: `My changes not in ${peer}`,
+          local_missing_node: `Only in ${peer}`,
+          peer_missing_node: `Missing in ${peer}`,
+          divergence: `Diverged from ${peer}`,
+        };
+        return labels[event?.type] || "Difference";
+      }
+
+      function peerLabel(address) {
+        const text = String(address || "");
+        const match = text.match(/:(\d+)(?:\/)?$/);
+        return match ? match[1] : text.replace(/^https?:\/\//, "") || "peer";
+      }
+
+      function cardPeople(card) {
+        const wrap = document.createElement("div");
+        wrap.className = "bob-card-people";
+        const owner = card.owner_person || null;
+        if (owner) wrap.append(personAvatar(owner, true));
+        for (const participant of card.participant_people || []) {
+          if (owner && participant.id === owner.id) continue;
+          wrap.append(personAvatar(participant, false));
+        }
+        if (!wrap.childElementCount) {
+          const empty = document.createElement("span");
+          empty.className = "bob-card-people-empty";
+          empty.textContent = "-";
+          empty.title = "Owner: None; Participants: None";
+          wrap.append(empty);
+        }
+        return wrap;
+      }
+
+      function personAvatar(person, owner) {
+        const avatar = document.createElement("span");
+        avatar.className = owner ? "participant-avatar owner" : "participant-avatar";
+        avatar.title = owner ? `${person.name || "Unknown"} (owner)` : person.name || "Unknown participant";
+        if (person.picture) {
+          avatar.style.backgroundImage = `url("${cssUrl(person.picture)}")`;
+          avatar.textContent = "";
+        } else {
+          avatar.textContent = initials(person.name || "?");
+        }
+        return avatar;
+      }
+
+      function initials(name) {
+        return String(name || "?")
+          .trim()
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() || "")
+          .join("") || "?";
+      }
+
+      function cssUrl(value) {
+        return String(value || "").replace(/["\\]/g, "\\$&");
+      }
+
+      function setExpanded(board, expanded) {
+        return run(
+          () => api("/api/boardofboards/boards/settings", { board_uuid: board.uuid, expanded }),
+          expanded ? "Expanded" : "Collapsed",
+        );
+      }
+
       function moveBoard(boardUuid, direction) {
-        const order = state.boards.map((board) => board.uuid);
+        const order = expandedBoards().map((board) => board.uuid);
         const index = order.indexOf(boardUuid);
         const swapWith = index + direction;
         if (swapWith < 0 || swapWith >= order.length) return;
@@ -214,19 +504,71 @@
       function editObjective(board) {
         const value = prompt("Objective", board.objective || "");
         if (value === null) return;
-        run(
-          () => api("/api/kanban/boards/set_objective", { board_uuid: board.uuid, objective: value }),
-          "Objective updated",
-        );
+        run(() => api("/api/kanban/boards/set_objective", { board_uuid: board.uuid, objective: value }), "Objective updated");
       }
 
-      let modalCard = null;
+      function openBoardSettings(board) {
+        settingsBoard = board;
+        el("boardSettingsTitle").textContent = board.name;
+        const fields = el("boardSettingsFields");
+        fields.replaceChildren();
+        fields.append(
+          selectField("settingsActiveColumn", "Active column", board.columns, board.active_column_uuid || ""),
+          selectField("settingsNextColumn", "Next column", board.columns, board.next_column_uuid || ""),
+        );
+        const active = el("settingsActiveColumn");
+        const next = el("settingsNextColumn");
+        active.onchange = () => {
+          if (active.value && active.value === next.value) next.value = "";
+        };
+        next.onchange = () => {
+          if (next.value && next.value === active.value) active.value = "";
+        };
+        el("boardSettingsModal").showModal();
+      }
+
+      function selectField(id, text, columns, value) {
+        const label = document.createElement("label");
+        label.textContent = text;
+        const select = document.createElement("select");
+        select.id = id;
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "None";
+        select.append(empty);
+        for (const column of columns) {
+          const option = document.createElement("option");
+          option.value = column.uuid;
+          option.textContent = column.name;
+          select.append(option);
+        }
+        select.value = value;
+        label.append(select);
+        return label;
+      }
+
+      el("cancelBoardSettingsBtn").onclick = () => el("boardSettingsModal").close();
+      el("saveBoardSettingsBtn").onclick = () => {
+        const board = settingsBoard;
+        el("boardSettingsModal").close();
+        run(
+          () =>
+            api("/api/boardofboards/boards/settings", {
+              board_uuid: board.uuid,
+              active_column_uuid: el("settingsActiveColumn").value,
+              next_column_uuid: el("settingsNextColumn").value,
+            }),
+          "Settings saved",
+        );
+      };
+
       function openCardModal(card) {
         modalCard = card;
         el("cardName").value = card.name || "";
         el("cardDescription").value = card.description || "";
         el("cardModal").showModal();
       }
+
       el("cancelCardBtn").onclick = () => el("cardModal").close();
       el("cardForm").addEventListener("submit", (event) => {
         event.preventDefault();
@@ -245,96 +587,88 @@
         );
       });
 
-      function renderManage() {
-        const container = el("manageBoardsList");
-        container.replaceChildren();
-        for (const board of state.available_boards) {
-          container.append(renderManageBoard(board));
-        }
-      }
-
-      function renderManageBoard(board) {
-        const wrap = document.createElement("div");
-        wrap.className = "bob-manage-board";
-        const title = document.createElement("h3");
-        title.textContent = board.name + (board.picked ? " (in summary)" : "");
-        wrap.append(title);
-
-        const table = document.createElement("table");
-        table.className = "bob-manage-table";
-        const headerRow = document.createElement("tr");
-        headerRow.innerHTML = "<th>Column</th><th>Active</th><th>Next</th>";
-        table.append(headerRow);
-
-        const activeSet = new Set(board.active_column_uuids);
-        const nextSet = new Set(board.next_column_uuids);
-        for (const column of board.columns) {
-          const row = document.createElement("tr");
-          const nameCell = document.createElement("td");
-          nameCell.textContent = column.name;
-          const activeCell = document.createElement("td");
-          const activeBox = document.createElement("input");
-          activeBox.type = "checkbox";
-          activeBox.checked = activeSet.has(column.uuid);
-          activeBox.dataset.role = "active";
-          activeBox.dataset.column = column.uuid;
-          activeCell.append(activeBox);
-          const nextCell = document.createElement("td");
-          const nextBox = document.createElement("input");
-          nextBox.type = "checkbox";
-          nextBox.checked = nextSet.has(column.uuid);
-          nextBox.dataset.role = "next";
-          nextBox.dataset.column = column.uuid;
-          nextCell.append(nextBox);
-          row.append(nameCell, activeCell, nextCell);
-          table.append(row);
-        }
-        wrap.append(table);
-
-        const actions = document.createElement("div");
-        actions.className = "bob-manage-actions";
-        const saveBtn = document.createElement("button");
-        saveBtn.textContent = board.picked ? "Update mapping" : "Add to summary";
-        saveBtn.onclick = () => {
-          const activeUuids = [...table.querySelectorAll('input[data-role="active"]:checked')].map(
-            (box) => box.dataset.column,
-          );
-          const nextUuids = [...table.querySelectorAll('input[data-role="next"]:checked')].map(
-            (box) => box.dataset.column,
-          );
-          run(
-            () =>
-              api("/api/boardofboards/boards/pick", {
-                board_uuid: board.uuid,
-                active_column_uuids: activeUuids,
-                next_column_uuids: nextUuids,
-              }),
-            "Saved",
-          ).then(renderManage);
-        };
-        actions.append(saveBtn);
-
-        if (board.picked) {
-          const removeBtn = document.createElement("button");
-          removeBtn.textContent = "Remove from summary";
-          removeBtn.onclick = () =>
-            run(() => api("/api/boardofboards/boards/unpick", { board_uuid: board.uuid }), "Removed").then(
-              renderManage,
-            );
-          actions.append(removeBtn);
-        }
-        wrap.append(actions);
-
-        return wrap;
-      }
-
       el("refreshBtn").onclick = () => load().catch((err) => showStatus(err.message, true));
-      el("manageBtn").onclick = () => {
-        renderManage();
-        el("manageModal").showModal();
-      };
-      el("closeManageBtn").onclick = () => el("manageModal").close();
 
+      el("newBoardBtn").onclick = () => {
+        el("newBoardName").value = "Kanban Board";
+        const select = el("newBoardTemplate");
+        select.replaceChildren();
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "Start empty";
+        select.append(empty);
+        for (const board of state.boards || []) {
+          const opt = document.createElement("option");
+          opt.value = board.uuid;
+          opt.textContent = board.name;
+          select.append(opt);
+        }
+        el("newBoardModal").showModal();
+      };
+
+      el("cancelNewBoardBtn").onclick = () => el("newBoardModal").close();
+      el("newBoardForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const name = el("newBoardName").value || "Kanban Board";
+        const templateUuid = el("newBoardTemplate").value;
+        el("newBoardModal").close();
+        run(async () => {
+          if (templateUuid) {
+            const result = await api("/api/kanban/boards/copy", { board_uuid: templateUuid });
+            if (result.value) {
+              await api("/api/kanban/boards/rename", { board_uuid: result.value, name });
+            }
+            return result;
+          }
+          return api("/api/kanban/boards/create", { name });
+        }, "Board created");
+      });
+
+      function encodeConnectToken(address, topicUuids) {
+        return btoa(JSON.stringify({ address, topic_uuids: topicUuids }));
+      }
+
+      function decodeConnectToken(token) {
+        const payload = JSON.parse(atob(token.trim()));
+        if (!payload.address || !Array.isArray(payload.topic_uuids) || !payload.topic_uuids.length) {
+          throw new Error("Invalid token");
+        }
+        return payload;
+      }
+
+      async function openShareModal(board) {
+        shareBoardUuid = board.uuid;
+        el("shareModalTitle").textContent = `Share "${board.name}"`;
+        el("shareConnectInput").value = "";
+        await loadIdentity();
+        el("shareModal").showModal();
+      }
+
+      el("copyShareTokenBtn").onclick = async () => {
+        await loadIdentity();
+        const token = encodeConnectToken(identity.address, [shareBoardUuid, identity.profileUuid]);
+        await navigator.clipboard.writeText(token);
+        showStatus("Token copied");
+      };
+
+      el("shareConnectBtn").onclick = () => {
+        let payload;
+        try {
+          payload = decodeConnectToken(el("shareConnectInput").value);
+        } catch (err) {
+          showStatus("Invalid token", true);
+          return;
+        }
+        run(() => api("/api/join_discussion", { address: payload.address, topic_uuids: payload.topic_uuids }), "Connected");
+      };
+
+      el("shareUnshareBtn").onclick = () => {
+        if (!confirm("Stop discussing this board with everyone currently on it? The board itself is not deleted.")) return;
+        el("shareModal").close();
+        run(() => api("/api/kanban/boards/unshare", { board_uuid: shareBoardUuid }), "Stopped discussing this board");
+      };
+
+      el("closeShareBtn").onclick = () => el("shareModal").close();
       load().catch((err) => showStatus(err.message, true));
     </script>
   </body>
