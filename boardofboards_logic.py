@@ -165,7 +165,7 @@ class BoardOfBoardsLogic:
     def _discussion_card_count(self, board: PRSPNode) -> int:
         card_uuids = set()
         for peer_addr in sorted(self.session.peer_perspectives):
-            if not self.kanban._peer_discusses_node(peer_addr, board.uuid):
+            if not self.session.peer_discusses_node(peer_addr, board.uuid):
                 continue
             for event in self.session.analyze_peer_transitions(peer_addr, board.uuid):
                 if event.get("type") == "in_agreement":
