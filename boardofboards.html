@@ -95,7 +95,6 @@
       let modalOwner = null;
       let settingsBoard = null;
       let shareBoardUuid = null;
-      let identity = null;
       const el = (id) => document.getElementById(id);
 
       async function api(path, body) {
@@ -126,12 +125,6 @@
         render();
       }
 
-      async function loadIdentity() {
-        if (identity) return identity;
-        const kanbanState = await api("/api/kanban/board");
-        identity = { address: kanbanState.address, profileUuid: kanbanState.user_profile.uuid };
-        return identity;
-      }
 
       function render() {
         const container = el("boards");
@@ -702,42 +695,46 @@
         }, "Board created");
       });
 
-      function encodeConnectToken(address, topicUuids) {
-        return btoa(JSON.stringify({ address, topic_uuids: topicUuids }));
+      // The token itself is plain JSON assembled server-side (only the
+      // server knows which channels - e.g. relay - it actually has
+      // configured); base64 here is purely a copy/paste-friendly wrapper
+      // for the browser, not a wire-format requirement.
+      async function fetchConnectToken(topicUuids) {
+        const params = new URLSearchParams();
+        for (const uuid of topicUuids) params.append("topic_uuids", uuid);
+        return api(`/api/connect_token?${params.toString()}`);
       }
 
-      function decodeConnectToken(token) {
-        const payload = JSON.parse(atob(token.trim()));
-        if (!payload.address || !Array.isArray(payload.topic_uuids) || !payload.topic_uuids.length) {
-          throw new Error("Invalid token");
+      function decodeConnectToken(encoded) {
+        const token = JSON.parse(atob(encoded.trim()));
+        if (token.version !== 1 || !Array.isArray(token.topic_uuids) || !token.topic_uuids.length) {
+          throw new Error("Invalid or unrecognized token");
         }
-        return payload;
+        return token;
       }
 
       async function openShareModal(board) {
         shareBoardUuid = board.uuid;
         el("shareModalTitle").textContent = `Share "${board.name}"`;
         el("shareConnectInput").value = "";
-        await loadIdentity();
         el("shareModal").showModal();
       }
 
       el("copyShareTokenBtn").onclick = async () => {
-        await loadIdentity();
-        const token = encodeConnectToken(identity.address, [shareBoardUuid, identity.profileUuid]);
-        await navigator.clipboard.writeText(token);
+        const token = await fetchConnectToken([shareBoardUuid]);
+        await navigator.clipboard.writeText(btoa(JSON.stringify(token)));
         showToast("Token copied");
       };
 
       el("shareConnectBtn").onclick = () => {
-        let payload;
+        let token;
         try {
-          payload = decodeConnectToken(el("shareConnectInput").value);
+          token = decodeConnectToken(el("shareConnectInput").value);
         } catch (err) {
           showToast("Invalid token", true);
           return;
         }
-        run(() => api("/api/join_discussion", { address: payload.address, topic_uuids: payload.topic_uuids }), "Connected");
+        run(() => api("/api/connect", { token }), "Connected");
       };
 
       el("shareUnshareBtn").onclick = () => {
