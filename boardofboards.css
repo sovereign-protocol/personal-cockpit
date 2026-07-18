@@ -385,7 +385,17 @@ body {
   padding-top: 0.02rem;
 }
 
+.change-summary {
+  margin-top: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.45rem;
+  background: #f6f8fa;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
 .bob-adopt,
+.bob-react,
 .bob-keep-mine-menu {
   border: 1px solid #d0d7de;
   border-radius: 6px;
@@ -396,7 +406,8 @@ body {
   padding: 0.08rem 0.3rem;
 }
 
-.bob-adopt {
+.bob-adopt,
+.bob-react {
   font-weight: 800;
 }
 

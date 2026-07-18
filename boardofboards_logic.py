@@ -81,6 +81,7 @@ class BoardOfBoardsLogic:
             # picker, which restricts to current board peers) since Overview
             # spans every board and has no per-board peer topic to filter by.
             "people": list(self._people_by_uuid().values()),
+            "users": self.kanban.users(),
         }
 
     def _board_summary(self, board: PRSPNode, settings: dict) -> dict:

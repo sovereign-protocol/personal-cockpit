@@ -78,6 +78,18 @@
       </div>
     </dialog>
 
+    <dialog id="reactionModal">
+      <form method="dialog" id="reactionForm" class="bob-manage">
+        <h2>React to Differences</h2>
+        <label>Reaction<select id="reactionSelect"></select></label>
+        <label>Effect<div id="reactionDetails" class="change-summary"></div></label>
+        <menu>
+          <button type="button" id="cancelReactionBtn">Cancel</button>
+          <button type="submit" class="primary">Apply</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="confirmModal">
       <h2 id="confirmModalTitle">Action</h2>
       <p id="confirmModalMessage" class="confirm-text"></p>
@@ -95,6 +107,8 @@
       let modalOwner = null;
       let settingsBoard = null;
       let shareBoardUuid = null;
+      let reactionCard = null;
+      let reactionOptions = [];
       const el = (id) => document.getElementById(id);
 
       async function api(path, body) {
@@ -373,73 +387,114 @@
         wrap.className = "bob-card-discussion-tools";
         const info = card.transition;
         if (!info || ["in_agreement", "in_transition"].includes(info.type)) return wrap;
-        if (!info.keep_mine_active) wrap.append(adoptButton(card));
-        wrap.append(keepMineMenu(card));
+        wrap.append(reactionButton(card));
         return wrap;
       }
 
-      function adoptButton(card) {
+      function reactionButton(card) {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "bob-adopt";
-        button.textContent = "Adopt";
-        button.title = "Adopt the peer version";
-        button.onclick = () => adoptCard(card);
+        button.className = "bob-react";
+        button.textContent = "React";
+        button.title = transitionLabel(card.transition);
+        button.onclick = () => openReaction(card);
         return button;
       }
 
-      function adoptCard(card) {
-        const event = firstTransitionEvent(card.transition);
-        if (!event?.peer_addr) {
-          showToast("No peer version available", true);
+      function openReaction(card) {
+        reactionCard = card;
+        const events = (card.transition?.events || [card.transition])
+          .filter((event) => event && event.type !== "in_agreement");
+        reactionOptions = events.map((event, index) => {
+          const changes = eventChangeSummary(event, 6) || "Adopt complete peer version";
+          return {
+            value: `adopt:${index}`,
+            label: `${changes} (from ${transitionActorLabel(event)})`,
+            details: `Adopts the complete version from ${transitionActorLabel(event)}.`,
+            action: "adopt",
+            event,
+          };
+        });
+        reactionOptions.push({
+          value: "keep",
+          label: "Keep as is for the moment",
+          details: "Keep your complete current version without asking peers to change theirs.",
+          action: "perspective",
+          state: "kept_mine",
+        });
+        const pushedChanges = localChangeSummary(card.transition, 6) || "your complete current version";
+        reactionOptions.push({
+          value: "push",
+          label: `Push back current changes: ${pushedChanges}`,
+          details: "Keep your complete current version and ask peers to adopt it.",
+          action: "perspective",
+          state: "pushed_back",
+        });
+        if (card.perspective_state && card.perspective_state !== "none") {
+          reactionOptions.push({
+            value: "clear",
+            label: "Clear current reaction",
+            details: "Remove the current keep or push-back decision.",
+            action: "perspective",
+            state: "none",
+          });
+        }
+        const select = el("reactionSelect");
+        select.replaceChildren();
+        for (const reaction of reactionOptions) {
+          const option = document.createElement("option");
+          option.value = reaction.value;
+          option.textContent = reaction.label;
+          select.append(option);
+        }
+        select.value =
+          card.perspective_state === "kept_mine" ? "keep" :
+          card.perspective_state === "pushed_back" ? "push" :
+          reactionOptions[0].value;
+        updateReactionDetails();
+        el("reactionModal").showModal();
+      }
+
+      function updateReactionDetails() {
+        const reaction = reactionOptions.find((item) => item.value === el("reactionSelect").value);
+        el("reactionDetails").textContent = reaction?.details || "";
+      }
+
+      el("reactionSelect").onchange = updateReactionDetails;
+      el("cancelReactionBtn").onclick = () => el("reactionModal").close();
+      el("reactionForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const reaction = reactionOptions.find((item) => item.value === el("reactionSelect").value);
+        if (!reaction || !reactionCard) return;
+        el("reactionModal").close();
+        if (reaction.action === "adopt") {
+          const missing = [reaction.event.type, reaction.event.original_type]
+            .includes("peer_missing_node");
+          await run(() => api("/api/kanban/adopt", {
+            source_addr: reaction.event.peer_addr,
+            node_uuid: reactionCard.uuid,
+            adopt_absence: missing,
+          }), "Adopted");
           return;
         }
-        run(
-          () =>
-            api("/api/kanban/adopt", {
-              source_addr: event.peer_addr,
-              node_uuid: card.uuid,
-              adopt_absence: event.type === "peer_missing_node",
-            }),
-          "Adopted",
-        );
-      }
-
-      const PERSPECTIVE_MENU_OPTIONS = [
-        { value: "none", label: "..." },
-        { value: "kept_mine", label: "Keep mine" },
-        { value: "pushed_back", label: "Push back" },
-      ];
-
-      function keepMineMenu(card) {
-        const select = document.createElement("select");
-        select.className = "bob-keep-mine-menu";
-        select.title = "Keep mine keeps my version; Push back asks peers to adopt it";
-        for (const option of PERSPECTIVE_MENU_OPTIONS) {
-          const opt = document.createElement("option");
-          opt.value = option.value;
-          opt.textContent = option.label;
-          select.append(opt);
-        }
-        select.value = card.perspective_state || "none";
-        select.dataset.state = select.value;
-        select.onchange = () =>
-          run(
-            () => api("/api/kanban/perspective", { node_uuid: card.uuid, state: select.value }),
-            "Updated",
-          );
-        return select;
-      }
-
-      function firstTransitionEvent(info) {
-        const events = (info?.events || [info]).filter((event) => event && event.type !== "in_agreement");
-        return events[0] || null;
-      }
+        await run(() => api("/api/kanban/perspective", {
+          node_uuid: reactionCard.uuid,
+          state: reaction.state,
+        }), "Updated");
+      });
 
       function peerLabel(address) {
+        const user = (state.users || []).find((item) => item.address === address);
+        if (user?.name && user.name !== "?") return user.name;
         const text = String(address || "");
         const match = text.match(/:(\d+)(?:\/)?$/);
         return match ? match[1] : text.replace(/^https?:\/\//, "") || "peer";
+      }
+
+      function userForParticipant(participant) {
+        return (state.users || []).find((user) => [
+          user.id, user.profile_uuid, user.identity_key, user.address,
+        ].includes(participant)) || { name: "?" };
       }
 
       function cardPeople(card) {
