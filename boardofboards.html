@@ -12,15 +12,46 @@
     <header class="bob-topbar">
       <strong>Personal Overview</strong>
       <div class="bob-topbar-actions">
+        <button id="manageTargetsBtn">Relay targets</button>
         <button id="newBoardBtn">+ New board</button>
       </div>
     </header>
 
     <main id="boards" class="bob-boards"></main>
 
+    <dialog id="targetsModal">
+      <div class="bob-manage relay-target-manager">
+        <h2>Relay targets</h2>
+        <p class="bob-hint">Named SFTP locations that boards can publish through.</p>
+        <div id="relayTargetList" class="relay-target-list"></div>
+        <button type="button" id="newTargetBtn">+ Add SFTP target</button>
+        <menu><button type="button" id="closeTargetsBtn">Close</button></menu>
+      </div>
+    </dialog>
+
+    <dialog id="targetEditorModal">
+      <form method="dialog" id="targetForm" class="bob-manage">
+        <h2>Add SFTP target</h2>
+        <label>Name<input id="targetName" required /></label>
+        <label>Host<input id="targetHost" required /></label>
+        <label>Port<input id="targetPort" type="number" min="1" max="65535" value="22" required /></label>
+        <label>Username<input id="targetUsername" required /></label>
+        <label>Password<input id="targetPassword" type="password" /></label>
+        <label>Remote root<input id="targetRoot" value="/" required /></label>
+        <label>Poll every (seconds)<input id="targetPollInterval" type="number" min="1" max="300" value="3" required /></label>
+        <p class="bob-hint">The password is stored locally in this client's session data.</p>
+        <menu>
+          <button type="button" id="cancelTargetBtn">Cancel</button>
+          <button type="submit" class="primary">Test &amp; save</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="cardModal">
       <form method="dialog" id="cardForm">
-        <h2>Edit Card</h2>
+        <h2 id="cardModalTitle">Edit Card</h2>
+        <div id="cardPerspectiveSwitcher" class="perspective-switcher"></div>
+        <p id="cardPerspectiveMeta" class="perspective-meta"></p>
         <label>Name<input id="cardName" /></label>
         <label>Description<textarea id="cardDescription" rows="4"></textarea></label>
         <label>Owner<select id="cardOwner"></select></label>
@@ -29,7 +60,7 @@
         <menu>
           <button type="button" id="deleteCardBtn" class="danger">Delete</button>
           <button type="button" id="cancelCardBtn">Cancel</button>
-          <button type="submit" class="primary">Save</button>
+          <button type="submit" id="saveCardBtn" class="primary">Save</button>
         </menu>
       </form>
     </dialog>
@@ -61,6 +92,7 @@
       <div class="bob-manage">
         <h2 id="shareModalTitle">Share board</h2>
         <p class="bob-hint">Copy a token and send it to someone so they can connect to this board.</p>
+        <label>Relay target<select id="shareTargetSelect"></select></label>
         <div class="bob-manage-actions">
           <button type="button" id="copyShareTokenBtn">Copy token</button>
         </div>
@@ -105,6 +137,10 @@
       let modalCard = null;
       let modalParticipants = [];
       let modalOwner = null;
+      let modalPerspectiveKey = null;
+      let modalPerspectiveOptions = [];
+      let modalLocalDraft = null;
+      let modalReadOnlyPerspective = false;
       let settingsBoard = null;
       let shareBoardUuid = null;
       let reactionCard = null;
@@ -164,6 +200,92 @@
           container.append(lane);
         });
       }
+
+      function renderRelayTargets() {
+        const container = el("relayTargetList");
+        container.replaceChildren();
+        const targets = state.relay_targets || [];
+        if (!targets.length) {
+          const empty = document.createElement("p");
+          empty.className = "bob-hint";
+          empty.textContent = "No relay targets configured.";
+          container.append(empty);
+          return;
+        }
+        for (const target of targets) {
+          const row = document.createElement("div");
+          row.className = "relay-target-row";
+          const details = document.createElement("div");
+          const title = document.createElement("strong");
+          title.textContent = target.name;
+          const meta = document.createElement("small");
+          const location = target.backend === "sftp"
+            ? `${target.username}@${target.host}:${target.port}${target.root}`
+            : target.root;
+          const timing = target.timing || {};
+          const timingText = timing.roundtrip_ms == null
+            ? "timing pending"
+            : `RTT ${Math.round(timing.roundtrip_ms)} ms · relay ${Math.round(timing.relay_cycle_ms || 0)} ms`;
+          meta.textContent = `${location} · ${timingText}`;
+          if (timing.server_clock_offset_ms != null) {
+            meta.title = `Relay clock offset ${Math.round(timing.server_clock_offset_ms)} ms (±${Math.round(timing.clock_uncertainty_ms || 0)} ms)`;
+          }
+          details.append(title, meta);
+          const actions = document.createElement("div");
+          const test = smallButton("Test", () => run(
+            () => api("/api/relay/targets/test", {target_id: target.id}),
+            `${target.name} is reachable`,
+          ));
+          actions.append(test);
+          if (!target.configured) {
+            actions.append(smallButton("Delete", () => confirmAction(
+              `Delete ${target.name}?`,
+              "Boards assigned to it will become unassigned.",
+              () => run(
+                () => api("/api/relay/targets/delete", {target_id: target.id}),
+                "Relay target deleted",
+              ),
+            )));
+          }
+          row.append(details, actions);
+          container.append(row);
+        }
+      }
+
+      el("manageTargetsBtn").onclick = () => {
+        renderRelayTargets();
+        el("targetsModal").showModal();
+      };
+      el("closeTargetsBtn").onclick = () => el("targetsModal").close();
+      el("newTargetBtn").onclick = () => {
+        el("targetForm").reset();
+        el("targetPort").value = "22";
+        el("targetRoot").value = "/";
+        el("targetPollInterval").value = "3";
+        el("targetEditorModal").showModal();
+      };
+      el("cancelTargetBtn").onclick = () => el("targetEditorModal").close();
+      el("targetForm").onsubmit = async (event) => {
+        event.preventDefault();
+        try {
+          await api("/api/relay/targets", {
+            name: el("targetName").value,
+            backend: "sftp",
+            host: el("targetHost").value,
+            port: Number(el("targetPort").value),
+            username: el("targetUsername").value,
+            password: el("targetPassword").value,
+            root: el("targetRoot").value,
+            poll_interval_seconds: Number(el("targetPollInterval").value),
+          });
+          el("targetEditorModal").close();
+          await load();
+          renderRelayTargets();
+          showToast("Relay target tested and saved");
+        } catch (err) {
+          showToast(err.message, true);
+        }
+      };
 
       function renderExpandedBoard(board, index, total) {
         const panel = document.createElement("section");
@@ -563,6 +685,7 @@
         for (const person of pickerCandidates()) {
           const button = document.createElement("button");
           button.type = "button";
+          button.disabled = modalReadOnlyPerspective;
           button.className = "user-choice";
           if (modalParticipants.includes(person.id)) button.classList.add("selected");
           const avatar = document.createElement("span");
@@ -605,6 +728,7 @@
         }
         select.value = modalParticipants.includes(modalOwner) ? modalOwner : "";
         modalOwner = select.value || null;
+        select.disabled = modalReadOnlyPerspective;
       }
 
       function setExpanded(board, expanded) {
@@ -682,16 +806,99 @@
 
       function openCardModal(card) {
         modalCard = card;
-        el("cardName").value = card.name || "";
-        el("cardDescription").value = card.description || "";
-        modalParticipants = Array.isArray(card.participants) ? [...card.participants] : [];
-        modalOwner = card.owner || null;
-        renderUserPicker();
-        renderOwnerSelect();
+        modalPerspectiveKey = null;
+        modalPerspectiveOptions = cardPerspectiveOptions(card);
+        modalLocalDraft = {
+          name: card.name || "",
+          description: card.description || "",
+          participants: Array.isArray(card.participants) ? [...card.participants] : [],
+          owner: card.owner || null,
+        };
+        renderCardPerspective("local");
         el("cardOwner").onchange = () => {
           modalOwner = el("cardOwner").value || null;
         };
         el("cardModal").showModal();
+      }
+
+      function cardPerspectiveOptions(card) {
+        const options = [{
+          key: "local",
+          label: "Mine",
+          version: card,
+          absent: false,
+        }];
+        const events = card.transition?.events || (card.transition ? [card.transition] : []);
+        for (const [index, version] of (card.perspectives || []).entries()) {
+          const event = events.find((candidate) => {
+            const revision = candidate.peer_revision || candidate.peer_state_hash;
+            return revision
+              ? revision === version.revision
+              : candidate.peer_addr === version.peer_addr;
+          });
+          options.push({
+            key: `peer:${index}`,
+            label: event ? transitionActorLabel(event) : peerLabel(version.peer_addr),
+            version,
+            absent: version.absent,
+          });
+        }
+        return options;
+      }
+
+      function captureLocalCardDraft() {
+        if (modalPerspectiveKey !== "local") return;
+        modalLocalDraft = {
+          name: el("cardName").value,
+          description: el("cardDescription").value,
+          participants: [...modalParticipants],
+          owner: modalOwner,
+        };
+      }
+
+      function renderCardPerspective(key) {
+        captureLocalCardDraft();
+        modalPerspectiveKey = key;
+        const perspective = modalPerspectiveOptions.find((item) => item.key === key);
+        const isLocal = !perspective || perspective.key === "local";
+        modalReadOnlyPerspective = !isLocal;
+        const data = isLocal
+          ? modalLocalDraft
+          : perspective.absent
+            ? { name: "", description: "", participants: [], owner: null }
+            : perspective.version;
+        el("cardModalTitle").textContent = isLocal
+          ? "Edit Card — My Perspective"
+          : `Card — ${perspective.label}'s Perspective`;
+        el("cardName").value = data?.name || "";
+        el("cardDescription").value = data?.description || "";
+        el("cardName").disabled = modalReadOnlyPerspective || perspective?.absent;
+        el("cardDescription").disabled = modalReadOnlyPerspective || perspective?.absent;
+        modalParticipants = Array.isArray(data?.participants) ? [...data.participants] : [];
+        modalOwner = data?.owner || null;
+        renderUserPicker();
+        renderOwnerSelect();
+        el("cardPerspectiveMeta").textContent = perspective?.absent
+          ? `This card is absent from ${perspective.label}'s perspective.`
+          : `Column: ${isLocal ? modalCard.column_name : perspective.version.column_name || "Unknown column"}`;
+        el("saveCardBtn").style.display = isLocal ? "" : "none";
+        el("deleteCardBtn").style.display = isLocal ? "" : "none";
+        renderCardPerspectiveSwitcher();
+      }
+
+      function renderCardPerspectiveSwitcher() {
+        const switcher = el("cardPerspectiveSwitcher");
+        switcher.replaceChildren();
+        switcher.style.display = modalPerspectiveOptions.length > 1 ? "flex" : "none";
+        for (const perspective of modalPerspectiveOptions) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = perspective.label;
+          button.className = "perspective-option";
+          if (perspective.key === modalPerspectiveKey) button.classList.add("active");
+          button.onclick = () => renderCardPerspective(perspective.key);
+          switcher.append(button);
+        }
       }
 
       el("cancelCardBtn").onclick = () => el("cardModal").close();
@@ -705,6 +912,7 @@
       };
       el("cardForm").addEventListener("submit", (event) => {
         event.preventDefault();
+        if (modalReadOnlyPerspective) return;
         const card = modalCard;
         el("cardModal").close();
         run(
@@ -759,10 +967,12 @@
       // server knows which channels - e.g. relay - it actually has
       // configured); base64 here is purely a copy/paste-friendly wrapper
       // for the browser, not a wire-format requirement.
-      async function fetchConnectToken(topicUuids) {
-        const params = new URLSearchParams();
-        for (const uuid of topicUuids) params.append("topic_uuids", uuid);
-        return api(`/api/connect_token?${params.toString()}`);
+      async function fetchConnectToken(topicUuids, targetId) {
+        if (!targetId) throw new Error("Assign a relay target first");
+        return api("/api/connect_token", {
+          target_id: targetId,
+          board_uuids: topicUuids,
+        });
       }
 
       function decodeConnectToken(encoded) {
@@ -777,13 +987,44 @@
         shareBoardUuid = board.uuid;
         el("shareModalTitle").textContent = `Share "${board.name}"`;
         el("shareConnectInput").value = "";
+        const targetSelect = el("shareTargetSelect");
+        targetSelect.replaceChildren();
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "Not assigned";
+        targetSelect.append(empty);
+        for (const target of state.relay_targets || []) {
+          const option = document.createElement("option");
+          option.value = target.id;
+          option.textContent = target.name;
+          targetSelect.append(option);
+        }
+        targetSelect.value = board.relay_target_id || "";
+        el("copyShareTokenBtn").disabled = !targetSelect.value;
+        targetSelect.onchange = async () => {
+          try {
+            await api("/api/relay/boards/assign", {
+              board_uuid: board.uuid,
+              target_id: targetSelect.value || null,
+            });
+            board.relay_target_id = targetSelect.value || null;
+            el("copyShareTokenBtn").disabled = !targetSelect.value;
+            showToast(targetSelect.value ? "Relay target assigned" : "Relay target removed");
+          } catch (err) {
+            showToast(err.message, true);
+          }
+        };
         el("shareModal").showModal();
       }
 
       el("copyShareTokenBtn").onclick = async () => {
-        const token = await fetchConnectToken([shareBoardUuid]);
-        await navigator.clipboard.writeText(btoa(JSON.stringify(token)));
-        showToast("Token copied");
+        try {
+          const token = await fetchConnectToken([shareBoardUuid], el("shareTargetSelect").value);
+          await navigator.clipboard.writeText(btoa(JSON.stringify(token)));
+          showToast("Token copied");
+        } catch (err) {
+          showToast(err.message, true);
+        }
       };
 
       el("shareConnectBtn").onclick = () => {

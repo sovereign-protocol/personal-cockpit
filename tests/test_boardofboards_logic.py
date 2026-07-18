@@ -171,6 +171,30 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertEqual(transition["type"], "divergence")
         self.assertEqual(transition["peer_addr"], "http://peer")
         self.assertEqual(summary["active_cards"][0]["perspective_state"], "none")
+        perspectives = summary["active_cards"][0]["perspectives"]
+        self.assertEqual(len(perspectives), 1)
+        self.assertEqual(perspectives[0]["peer_addr"], "http://peer")
+        self.assertFalse(perspectives[0]["absent"])
+        self.assertEqual(perspectives[0]["name"], "Discuss me")
+        self.assertEqual(perspectives[0]["column_name"], "Doing")
+
+    def test_card_perspectives_include_multiple_absent_versions_and_dedupe_forwarding(self):
+        runtime = self.runtime(8528)
+        kanban: KanbanLogic = runtime.logic
+        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        board = kanban.ensure_board()
+        card = kanban.create_card(kanban.columns(board)[0].uuid, "Task").value
+        revision_a = "revision-a"
+
+        perspectives = bob._card_perspectives(card, {"events": [
+            {"type": "peer_missing_node", "peer_addr": "http://a", "peer_revision": revision_a},
+            # A forwarded copy of A's same revision must not become a third user toggle.
+            {"type": "peer_missing_node", "peer_addr": "http://forwarder", "peer_revision": revision_a},
+            {"type": "peer_missing_node", "peer_addr": "http://b", "peer_revision": "revision-b"},
+        ]})
+
+        self.assertEqual([item["peer_addr"] for item in perspectives], ["http://a", "http://b"])
+        self.assertTrue(all(item["absent"] for item in perspectives))
 
     def test_selected_flag_is_summary_only_and_toggles(self):
         runtime = self.runtime(8503)

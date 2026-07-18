@@ -74,6 +74,10 @@ class BoardOfBoardsLogic:
                 ),
             )
         ]
+        relay_manager = self.config.get("_relay_manager")
+        if relay_manager:
+            for board in boards_out:
+                board["relay_target_id"] = relay_manager.target_for_board(board["uuid"])
         return {
             "boards": boards_out,
             # Every peer this session knows about, for the card-edit modal's
@@ -82,6 +86,7 @@ class BoardOfBoardsLogic:
             # spans every board and has no per-board peer topic to filter by.
             "people": list(self._people_by_uuid().values()),
             "users": self.kanban.users(),
+            "relay_targets": relay_manager.list_targets() if relay_manager else [],
         }
 
     def _board_summary(self, board: PRSPNode, settings: dict) -> dict:
@@ -222,6 +227,7 @@ class BoardOfBoardsLogic:
         owner = card.data.get("owner")
         owner_person = self._person(owner, people_by_uuid)
         participant_people = [self._person(user_id, people_by_uuid) for user_id in participants]
+        transition = transition_by_node.get(card.uuid)
         return {
             "uuid": card.uuid,
             "name": card.data.get("name", ""),
@@ -233,10 +239,51 @@ class BoardOfBoardsLogic:
             "owner_label": owner_person["name"] if owner else "",
             "owner_person": owner_person if owner else None,
             "perspective_state": card.perspective_state,
-            "transition": transition_by_node.get(card.uuid),
+            "transition": transition,
+            "perspectives": self._card_perspectives(card, transition),
             "column_uuid": column.uuid,
             "column_name": column.data.get("name", ""),
         }
+
+    def _card_perspectives(self, card: PRSPNode, transition: dict | None) -> list[dict]:
+        """Return complete peer card versions represented by active differences."""
+        if not transition:
+            return []
+        perspectives = []
+        seen = set()
+        for event in transition.get("events") or [transition]:
+            if not event or event.get("type") == "in_agreement":
+                continue
+            peer_addr = event.get("peer_addr")
+            revision = event.get("peer_revision") or event.get("peer_state_hash")
+            signature = revision or f"{peer_addr}:missing"
+            if signature in seen:
+                continue
+            seen.add(signature)
+            peer_card = self.session.get_cached_peer_subtree(peer_addr, card.uuid)
+            absent = not peer_card or peer_card.deleted
+            peer_column = None
+            if peer_card and peer_card.parent_uuid:
+                peer_column = self.session.get_cached_peer_subtree(
+                    peer_addr, peer_card.parent_uuid,
+                )
+            data = peer_card.data if peer_card and not absent else {}
+            perspectives.append({
+                "peer_addr": peer_addr,
+                "origin_identity": event.get("origin_identity"),
+                "revision": revision,
+                "absent": absent,
+                "name": data.get("name", ""),
+                "description": data.get("description", ""),
+                "participants": list(data.get("participants", [])),
+                "owner": data.get("owner"),
+                "column_uuid": peer_card.parent_uuid if peer_card and not absent else "",
+                "column_name": (
+                    peer_column.data.get("name", "")
+                    if peer_column and not peer_column.deleted else ""
+                ),
+            })
+        return perspectives
 
     def update_board_settings(self, board_uuid: str,
                               expanded: bool | None = None,
