@@ -159,12 +159,16 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         )
 
         kanban.update_card(card.uuid, "Discuss me locally", "", [my_id], owner=my_id)
+        runtime.session.record_peer_observations(
+            "http://peer",
+            runtime.session.node_revision_map(runtime.session.protocol.index[board.uuid]),
+        )
 
         summary = bob.summary_payload()["boards"][0]
         self.assertEqual(summary["discussion_count"], 1)
         self.assertEqual(summary["column_count"], 3)
         transition = summary["active_cards"][0]["transition"]
-        self.assertEqual(transition["type"], "local_made_changes")
+        self.assertEqual(transition["type"], "divergence")
         self.assertEqual(transition["peer_addr"], "http://peer")
         self.assertEqual(summary["active_cards"][0]["perspective_state"], "none")
 

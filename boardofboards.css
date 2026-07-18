@@ -305,6 +305,17 @@ body {
   line-height: 1;
 }
 
+.bob-card.in-transition::after {
+  content: "";
+  position: absolute;
+  right: 0.45rem;
+  top: 0.45rem;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: #8c9bab;
+}
+
 .bob-card.event-peer_made_changes { border-left-color: #00875a; }
 .bob-card.event-peer_made_changes::before { background: #00875a; }
 .bob-card.event-local_missing_node { border-left-color: #00a3bf; }

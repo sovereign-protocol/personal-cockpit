@@ -358,6 +358,11 @@
       function applyCardTransition(row, card) {
         const info = card.transition;
         if (!info || info.type === "in_agreement") return;
+        if (info.type === "in_transition") {
+          row.classList.add("in-transition");
+          row.title = transitionLabel(info);
+          return;
+        }
         row.classList.add("diff", `event-${info.type}`);
         row.dataset.transitionSymbol = transitionSymbol(info.type);
         row.title = transitionLabel(info);
@@ -367,7 +372,7 @@
         const wrap = document.createElement("div");
         wrap.className = "bob-card-discussion-tools";
         const info = card.transition;
-        if (!info || info.type === "in_agreement") return wrap;
+        if (!info || ["in_agreement", "in_transition"].includes(info.type)) return wrap;
         if (!info.keep_mine_active) wrap.append(adoptButton(card));
         wrap.append(keepMineMenu(card));
         return wrap;

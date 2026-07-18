@@ -164,20 +164,19 @@ class BoardOfBoardsLogic:
 
     def _discussion_card_count(self, board: PRSPNode) -> int:
         card_uuids = set()
-        for peer_addr in sorted(self.session.peer_perspectives):
-            if not self.session.peer_discusses_node(peer_addr, board.uuid):
+        for event in self.kanban.transition_events(board.uuid):
+            if event.get("type") in ("in_agreement", "in_transition"):
                 continue
-            for event in self.session.analyze_peer_transitions(peer_addr, board.uuid):
-                if event.get("type") == "in_agreement":
-                    continue
-                node_uuid = event.get("node_uuid")
-                if not node_uuid:
-                    continue
-                local_node = self.session.protocol.index.get(node_uuid)
-                peer_node = self.session.get_cached_peer_subtree(peer_addr, node_uuid)
-                node = local_node or peer_node
-                if node and node.data.get("type") == "kanban_card":
-                    card_uuids.add(node_uuid)
+            node_uuid = event.get("node_uuid")
+            if not node_uuid:
+                continue
+            local_node = self.session.protocol.index.get(node_uuid)
+            peer_node = self.session.get_cached_peer_subtree(
+                event.get("peer_addr"), node_uuid,
+            )
+            node = local_node or peer_node
+            if node and node.data.get("type") == "kanban_card":
+                card_uuids.add(node_uuid)
         return len(card_uuids)
 
     def _people_by_uuid(self) -> dict[str, dict]:
