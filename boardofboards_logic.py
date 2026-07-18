@@ -238,7 +238,6 @@ class BoardOfBoardsLogic:
             "owner": owner,
             "owner_label": owner_person["name"] if owner else "",
             "owner_person": owner_person if owner else None,
-            "perspective_state": card.perspective_state,
             "transition": transition,
             "perspectives": self._card_perspectives(card, transition),
             "column_uuid": column.uuid,

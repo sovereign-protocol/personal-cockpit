@@ -19,7 +19,9 @@
 
     <main id="boards" class="bob-boards"></main>
 
-    <dialog id="targetsModal">
+    <div id="reactionMenu" class="reaction-menu" role="menu" hidden></div>
+
+    <dialog id="targetsModal" class="relay-target-dialog">
       <div class="bob-manage relay-target-manager">
         <h2>Relay targets</h2>
         <p class="bob-hint">Named SFTP locations that boards can publish through.</p>
@@ -29,17 +31,19 @@
       </div>
     </dialog>
 
-    <dialog id="targetEditorModal">
-      <form method="dialog" id="targetForm" class="bob-manage">
-        <h2>Add SFTP target</h2>
-        <label>Name<input id="targetName" required /></label>
-        <label>Host<input id="targetHost" required /></label>
-        <label>Port<input id="targetPort" type="number" min="1" max="65535" value="22" required /></label>
-        <label>Username<input id="targetUsername" required /></label>
-        <label>Password<input id="targetPassword" type="password" /></label>
-        <label>Remote root<input id="targetRoot" value="/" required /></label>
-        <label>Poll every (seconds)<input id="targetPollInterval" type="number" min="1" max="300" value="3" required /></label>
-        <p class="bob-hint">The password is stored locally in this client's session data.</p>
+    <dialog id="targetEditorModal" class="relay-target-dialog">
+      <form method="dialog" id="targetForm" class="bob-manage relay-target-form">
+        <h2 id="targetEditorTitle">Add SFTP target</h2>
+        <div class="relay-target-form-grid">
+          <label>Name<input id="targetName" required /></label>
+          <label>Host<input id="targetHost" required /></label>
+          <label>Port<input id="targetPort" type="number" min="1" max="65535" value="22" required /></label>
+          <label>Username<input id="targetUsername" required /></label>
+          <label>Password<input id="targetPassword" type="password" /></label>
+          <label>Remote root<input id="targetRoot" value="/" required /></label>
+          <label>Poll every (seconds)<input id="targetPollInterval" type="number" min="1" max="300" value="3" required /></label>
+        </div>
+        <p id="targetPasswordHint" class="bob-hint">The password is stored locally in this client's session data.</p>
         <menu>
           <button type="button" id="cancelTargetBtn">Cancel</button>
           <button type="submit" class="primary">Test &amp; save</button>
@@ -110,18 +114,6 @@
       </div>
     </dialog>
 
-    <dialog id="reactionModal">
-      <form method="dialog" id="reactionForm" class="bob-manage">
-        <h2>React to Differences</h2>
-        <label>Reaction<select id="reactionSelect"></select></label>
-        <label>Effect<div id="reactionDetails" class="change-summary"></div></label>
-        <menu>
-          <button type="button" id="cancelReactionBtn">Cancel</button>
-          <button type="submit" class="primary">Apply</button>
-        </menu>
-      </form>
-    </dialog>
-
     <dialog id="confirmModal">
       <h2 id="confirmModalTitle">Action</h2>
       <p id="confirmModalMessage" class="confirm-text"></p>
@@ -143,8 +135,6 @@
       let modalReadOnlyPerspective = false;
       let settingsBoard = null;
       let shareBoardUuid = null;
-      let reactionCard = null;
-      let reactionOptions = [];
       const el = (id) => document.getElementById(id);
 
       async function api(path, body) {
@@ -237,16 +227,15 @@
             `${target.name} is reachable`,
           ));
           actions.append(test);
-          if (!target.configured) {
-            actions.append(smallButton("Delete", () => confirmAction(
-              `Delete ${target.name}?`,
-              "Boards assigned to it will become unassigned.",
-              () => run(
-                () => api("/api/relay/targets/delete", {target_id: target.id}),
-                "Relay target deleted",
-              ),
-            )));
-          }
+          actions.append(smallButton("Edit", () => openTargetEditor(target)));
+          actions.append(smallButton("Delete", () => confirmAction(
+            `Delete ${target.name}?`,
+            "Boards assigned to it will become unassigned.",
+            () => run(
+              () => api("/api/relay/targets/delete", {target_id: target.id}),
+              "Relay target deleted",
+            ),
+          )));
           row.append(details, actions);
           container.append(row);
         }
@@ -257,18 +246,29 @@
         el("targetsModal").showModal();
       };
       el("closeTargetsBtn").onclick = () => el("targetsModal").close();
-      el("newTargetBtn").onclick = () => {
+      let editingTargetId = null;
+      function openTargetEditor(target = null) {
+        editingTargetId = target?.id || null;
         el("targetForm").reset();
-        el("targetPort").value = "22";
-        el("targetRoot").value = "/";
-        el("targetPollInterval").value = "3";
+        el("targetEditorTitle").textContent = target ? "Edit SFTP target" : "Add SFTP target";
+        el("targetName").value = target?.name || "";
+        el("targetHost").value = target?.host || "";
+        el("targetPort").value = target?.port || "22";
+        el("targetUsername").value = target?.username || "";
+        el("targetRoot").value = target?.root || "/";
+        el("targetPollInterval").value = target?.poll_interval_seconds || "3";
+        el("targetPasswordHint").textContent = target?.has_password
+          ? "Leave the password empty to keep the saved password."
+          : "The password is stored locally in this client's session data.";
         el("targetEditorModal").showModal();
-      };
+      }
+      el("newTargetBtn").onclick = () => openTargetEditor();
       el("cancelTargetBtn").onclick = () => el("targetEditorModal").close();
       el("targetForm").onsubmit = async (event) => {
         event.preventDefault();
         try {
           await api("/api/relay/targets", {
+            target_id: editingTargetId,
             name: el("targetName").value,
             backend: "sftp",
             host: el("targetHost").value,
@@ -517,93 +517,89 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = "bob-react";
-        button.textContent = "React";
+        button.setAttribute("aria-label", "React to differences");
         button.title = transitionLabel(card.transition);
-        button.onclick = () => openReaction(card);
-        return button;
-      }
-
-      function openReaction(card) {
-        reactionCard = card;
+        button.textContent = "React";
         const events = (card.transition?.events || [card.transition])
           .filter((event) => event && event.type !== "in_agreement");
-        reactionOptions = events.map((event, index) => {
-          const changes = eventChangeSummary(event, 6) || "Adopt complete peer version";
+        const reactions = events.map((event) => {
+          const action = event.reaction || "adopt";
+          const actor = transitionActorLabel(event);
+          const changes = eventChangeSummary(event, 6) || "complete peer version";
+          if (action === "rollback") {
+            return {
+              label: `Roll back to my previous version held by ${actor}`,
+              action,
+              event,
+            };
+          }
           return {
-            value: `adopt:${index}`,
-            label: `${changes} (from ${transitionActorLabel(event)})`,
-            details: `Adopts the complete version from ${transitionActorLabel(event)}.`,
-            action: "adopt",
+            label: `Adopt ${changes} (from ${actor})`,
+            action,
             event,
           };
         });
-        reactionOptions.push({
-          value: "keep",
-          label: "Keep as is for the moment",
-          details: "Keep your complete current version without asking peers to change theirs.",
-          action: "perspective",
-          state: "kept_mine",
-        });
-        const pushedChanges = localChangeSummary(card.transition, 6) || "your complete current version";
-        reactionOptions.push({
-          value: "push",
-          label: `Push back current changes: ${pushedChanges}`,
-          details: "Keep your complete current version and ask peers to adopt it.",
-          action: "perspective",
-          state: "pushed_back",
-        });
-        if (card.perspective_state && card.perspective_state !== "none") {
-          reactionOptions.push({
-            value: "clear",
-            label: "Clear current reaction",
-            details: "Remove the current keep or push-back decision.",
-            action: "perspective",
-            state: "none",
-          });
-        }
-        const select = el("reactionSelect");
-        select.replaceChildren();
-        for (const reaction of reactionOptions) {
-          const option = document.createElement("option");
-          option.value = reaction.value;
+        button.onclick = (event) => {
+          event.stopPropagation();
+          openReactionMenu(button, card, reactions);
+        };
+        return button;
+      }
+
+      function closeReactionMenu() {
+        const menu = el("reactionMenu");
+        menu.hidden = true;
+        menu.replaceChildren();
+      }
+
+      function openReactionMenu(anchor, card, reactions) {
+        if (!reactions.length) return;
+        const menu = el("reactionMenu");
+        menu.replaceChildren();
+        for (const reaction of reactions) {
+          const option = document.createElement("button");
+          option.type = "button";
+          option.className = "reaction-menu-option";
           option.textContent = reaction.label;
-          select.append(option);
+          option.onclick = async (event) => {
+            event.stopPropagation();
+            closeReactionMenu();
+            const missing = [reaction.event.type, reaction.event.original_type]
+              .includes("peer_missing_node");
+            const endpoint = reaction.action === "rollback"
+              ? "/api/kanban/rollback"
+              : "/api/kanban/adopt";
+            await run(() => api(endpoint, {
+              source_addr: reaction.event.peer_addr,
+              node_uuid: card.uuid,
+              adopt_absence: reaction.action === "adopt" && missing,
+              rollback_absence: reaction.action === "rollback" && missing,
+            }), reaction.action === "rollback" ? "Rolled back" : "Adopted");
+          };
+          menu.append(option);
         }
-        select.value =
-          card.perspective_state === "kept_mine" ? "keep" :
-          card.perspective_state === "pushed_back" ? "push" :
-          reactionOptions[0].value;
-        updateReactionDetails();
-        el("reactionModal").showModal();
+        menu.hidden = false;
+        const rect = anchor.getBoundingClientRect();
+        const margin = 8;
+        const left = Math.max(margin, Math.min(
+          rect.left, window.innerWidth - menu.offsetWidth - margin,
+        ));
+        let top = rect.bottom + 4;
+        if (top + menu.offsetHeight > window.innerHeight - margin) {
+          top = Math.max(margin, rect.top - menu.offsetHeight - 4);
+        }
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
       }
 
-      function updateReactionDetails() {
-        const reaction = reactionOptions.find((item) => item.value === el("reactionSelect").value);
-        el("reactionDetails").textContent = reaction?.details || "";
-      }
-
-      el("reactionSelect").onchange = updateReactionDetails;
-      el("cancelReactionBtn").onclick = () => el("reactionModal").close();
-      el("reactionForm").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const reaction = reactionOptions.find((item) => item.value === el("reactionSelect").value);
-        if (!reaction || !reactionCard) return;
-        el("reactionModal").close();
-        if (reaction.action === "adopt") {
-          const missing = [reaction.event.type, reaction.event.original_type]
-            .includes("peer_missing_node");
-          await run(() => api("/api/kanban/adopt", {
-            source_addr: reaction.event.peer_addr,
-            node_uuid: reactionCard.uuid,
-            adopt_absence: missing,
-          }), "Adopted");
-          return;
-        }
-        await run(() => api("/api/kanban/perspective", {
-          node_uuid: reactionCard.uuid,
-          state: reaction.state,
-        }), "Updated");
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest("#reactionMenu")) closeReactionMenu();
       });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeReactionMenu();
+      });
+      window.addEventListener("resize", closeReactionMenu);
+      window.addEventListener("scroll", closeReactionMenu, true);
 
       function peerLabel(address) {
         const user = (state.users || []).find((item) => item.address === address);

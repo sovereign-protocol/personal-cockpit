@@ -170,7 +170,6 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         transition = summary["active_cards"][0]["transition"]
         self.assertEqual(transition["type"], "divergence")
         self.assertEqual(transition["peer_addr"], "http://peer")
-        self.assertEqual(summary["active_cards"][0]["perspective_state"], "none")
         perspectives = summary["active_cards"][0]["perspectives"]
         self.assertEqual(len(perspectives), 1)
         self.assertEqual(perspectives[0]["peer_addr"], "http://peer")
