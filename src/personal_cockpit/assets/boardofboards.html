@@ -194,7 +194,7 @@
       function renderRelayTargets() {
         const container = el("relayTargetList");
         container.replaceChildren();
-        const targets = state.relay_targets || [];
+        const targets = state.channel_targets || [];
         if (!targets.length) {
           const empty = document.createElement("p");
           empty.className = "bob-hint";
@@ -223,7 +223,7 @@
           details.append(title, meta);
           const actions = document.createElement("div");
           const test = smallButton("Test", () => run(
-            () => api("/api/relay/targets/test", {target_id: target.id}),
+            () => api("/api/channels/mailbox/targets/test", {target_id: target.id}),
             `${target.name} is reachable`,
           ));
           actions.append(test);
@@ -232,7 +232,7 @@
             `Delete ${target.name}?`,
             "Boards assigned to it will become unassigned.",
             () => run(
-              () => api("/api/relay/targets/delete", {target_id: target.id}),
+              () => api("/api/channels/mailbox/targets/delete", {target_id: target.id}),
               "Relay target deleted",
             ),
           )));
@@ -267,7 +267,7 @@
       el("targetForm").onsubmit = async (event) => {
         event.preventDefault();
         try {
-          await api("/api/relay/targets", {
+          await api("/api/channels/mailbox/targets", {
             target_id: editingTargetId,
             name: el("targetName").value,
             backend: "sftp",
@@ -966,7 +966,7 @@
       async function fetchConnectToken(topicUuids, targetId) {
         if (!targetId) throw new Error("Assign a relay target first");
         return api("/api/connect_token", {
-          target_id: targetId,
+          channel_options: { mailbox: { target_id: targetId } },
           topic_uuids: topicUuids,
         });
       }
@@ -989,21 +989,21 @@
         empty.value = "";
         empty.textContent = "Not assigned";
         targetSelect.append(empty);
-        for (const target of state.relay_targets || []) {
+        for (const target of state.channel_targets || []) {
           const option = document.createElement("option");
           option.value = target.id;
           option.textContent = target.name;
           targetSelect.append(option);
         }
-        targetSelect.value = board.relay_target_id || "";
+        targetSelect.value = board.channel_target_id || "";
         el("copyShareTokenBtn").disabled = !targetSelect.value;
         targetSelect.onchange = async () => {
           try {
-            await api("/api/relay/topics/assign", {
+            await api("/api/channels/mailbox/topics/assign", {
               topic_uuid: board.uuid,
               target_id: targetSelect.value || null,
             });
-            board.relay_target_id = targetSelect.value || null;
+            board.channel_target_id = targetSelect.value || null;
             el("copyShareTokenBtn").disabled = !targetSelect.value;
             showToast(targetSelect.value ? "Relay target assigned" : "Relay target removed");
           } catch (err) {

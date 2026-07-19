@@ -65,11 +65,11 @@ APPLICATION_MANIFEST = ApplicationManifest(
 
 class BoardOfBoardsLogic:
     def __init__(self, session: Session, config: dict | None = None,
-                 relay_manager=None):
+                 channel_manager=None):
         self.session = session
         self.config = config or {}
-        self.relay_manager = relay_manager
-        self.kanban = KanbanLogic(session, self.config, relay_manager)
+        self.channel_manager = channel_manager
+        self.kanban = KanbanLogic(session, self.config, channel_manager)
 
     def summary_payload(self) -> dict:
         metadata = self._metadata()
@@ -87,10 +87,10 @@ class BoardOfBoardsLogic:
                 ),
             )
         ]
-        relay_manager = self.relay_manager or self.config.get("_relay_manager")
-        if relay_manager:
+        channel_manager = self.channel_manager
+        if channel_manager:
             for board in boards_out:
-                board["relay_target_id"] = relay_manager.target_for_topic(board["uuid"])
+                board["channel_target_id"] = channel_manager.target_for_topic(board["uuid"])
         return {
             "boards": boards_out,
             # Every peer this session knows about, for the card-edit modal's
@@ -99,7 +99,7 @@ class BoardOfBoardsLogic:
             # spans every board and has no per-board peer topic to filter by.
             "people": list(self._people_by_uuid().values()),
             "users": self.kanban.users(),
-            "relay_targets": relay_manager.list_targets() if relay_manager else [],
+            "channel_targets": channel_manager.list_targets() if channel_manager else [],
         }
 
     def _board_summary(self, board: ProtocolNode, settings: dict) -> dict:
@@ -419,14 +419,14 @@ class BoardOfBoardsLogic:
 
 
 def create_logic(session: Session, config: dict) -> BoardOfBoardsLogic:
-    return BoardOfBoardsLogic(session, config, config.get("_relay_manager"))
+    return BoardOfBoardsLogic(session, config)
 
 
 def create_application(services: ApplicationServices) -> ApplicationInstance:
     logic = BoardOfBoardsLogic(
         services.session,
         dict(services.settings),
-        services.relay_manager,
+        services.channel_manager,
     )
     return ApplicationInstance(
         manifest=APPLICATION_MANIFEST,
@@ -482,7 +482,9 @@ def build_routes(logic: BoardOfBoardsLogic, runtime, config: dict) -> list[Route
 async def _json_result(runtime, result: SessionResult) -> JSONResponse:
     if result.status != "ok":
         return JSONResponse({"status": "error", "reason": result.reason}, status_code=409)
-    deliveries = await asyncio.to_thread(runtime.adapter.execute_effects, result.effects)
+    deliveries = await asyncio.to_thread(
+        runtime.channel_manager.execute_effects, result.effects,
+    )
     runtime.notify_change()
     payload: dict[str, Any] = {"status": "ok"}
     if hasattr(result.value, "to_dict"):
