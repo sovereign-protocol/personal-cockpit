@@ -28,7 +28,6 @@ Contract:
 
 Offered API:
   create_logic(session, config)
-  build_routes(logic, runtime, config)
 
 Used API:
   kanban_logic.KanbanLogic (boards/columns/cards queries only) and
@@ -37,32 +36,15 @@ Used API:
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from s_kanban.logic import KanbanLogic
-from sovereign.application import (
-    ApplicationInstance, ApplicationManifest, ApplicationServices,
-)
 from sovereign.protocol import ProtocolNode
 from sovereign.session import Session, SessionResult
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-from starlette.routing import Route
 
 
 PERSONAL_COCKPIT_APPLICATION_ID = "personal-cockpit"
 APP_METADATA_KEY = PERSONAL_COCKPIT_APPLICATION_ID
-APPLICATION_MANIFEST = ApplicationManifest(
-    application_id=PERSONAL_COCKPIT_APPLICATION_ID,
-    display_name="Personal Cockpit",
-    data_schema_version=1,
-    asset_package="personal_cockpit.assets",
-    ui_file="boardofboards.html",
-    css_file="boardofboards.css",
-)
-
-
 class BoardOfBoardsLogic:
     def __init__(self, session: Session, config: dict | None = None,
                  channel_manager=None):
@@ -420,81 +402,3 @@ class BoardOfBoardsLogic:
 
 def create_logic(session: Session, config: dict) -> BoardOfBoardsLogic:
     return BoardOfBoardsLogic(session, config)
-
-
-def create_application(services: ApplicationServices) -> ApplicationInstance:
-    logic = BoardOfBoardsLogic(
-        services.session,
-        dict(services.settings),
-        services.channel_manager,
-    )
-    return ApplicationInstance(
-        manifest=APPLICATION_MANIFEST,
-        logic=logic,
-        registration=None,
-        controllers=tuple(build_routes(logic, services, dict(services.settings))),
-    )
-
-
-def build_routes(logic: BoardOfBoardsLogic, runtime, config: dict) -> list[Route]:
-    async def api_summary(request: Request):
-        return JSONResponse(logic.summary_payload())
-
-    async def api_pick_board(request: Request):
-        data = await request.json()
-        return await _json_result(runtime, logic.pick_board(
-            data["board_uuid"],
-            data.get("active_column_uuids"),
-            data.get("next_column_uuids"),
-        ))
-
-    async def api_update_board_settings(request: Request):
-        data = await request.json()
-        return await _json_result(runtime, logic.update_board_settings(
-            data["board_uuid"],
-            data.get("expanded") if "expanded" in data else None,
-            data.get("active_column_uuid"),
-            data.get("next_column_uuid"),
-        ))
-
-    async def api_unpick_board(request: Request):
-        data = await request.json()
-        return await _json_result(runtime, logic.unpick_board(data["board_uuid"]))
-
-    async def api_reorder_boards(request: Request):
-        data = await request.json()
-        return await _json_result(runtime, logic.reorder_boards(data.get("board_uuids", [])))
-
-    async def api_toggle_selected(request: Request):
-        data = await request.json()
-        return await _json_result(runtime, logic.toggle_selected(data["card_uuid"]))
-
-    return [
-        Route("/api/personal-cockpit/summary", api_summary),
-        Route("/api/personal-cockpit/boards/settings", api_update_board_settings, methods=["POST"]),
-        Route("/api/personal-cockpit/boards/pick", api_pick_board, methods=["POST"]),
-        Route("/api/personal-cockpit/boards/unpick", api_unpick_board, methods=["POST"]),
-        Route("/api/personal-cockpit/boards/reorder", api_reorder_boards, methods=["POST"]),
-        Route("/api/personal-cockpit/cards/toggle_selected", api_toggle_selected, methods=["POST"]),
-    ]
-
-
-async def _json_result(runtime, result: SessionResult) -> JSONResponse:
-    if result.status != "ok":
-        return JSONResponse({"status": "error", "reason": result.reason}, status_code=409)
-    deliveries = await asyncio.to_thread(
-        runtime.channel_manager.execute_effects, result.effects,
-    )
-    runtime.notify_change()
-    payload: dict[str, Any] = {"status": "ok"}
-    if hasattr(result.value, "to_dict"):
-        payload["value"] = result.value.to_dict()
-    elif result.value is not None:
-        payload["value"] = result.value
-    errors = [item for item in deliveries if not item.ok]
-    if errors:
-        payload["delivery_errors"] = [
-            {"effect_type": item.effect_type, "target": item.target, "reason": item.reason}
-            for item in errors
-        ]
-    return JSONResponse(payload)
