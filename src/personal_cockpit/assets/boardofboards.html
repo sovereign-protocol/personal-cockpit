@@ -10,9 +10,8 @@
   <body>
     <div id="toast" class="toast"></div>
     <header class="bob-topbar">
-      <strong>Personal Overview</strong>
+      <div id="shell"></div>
       <div class="bob-topbar-actions">
-        <button id="manageTargetsBtn">Relay targets</button>
         <button id="newBoardBtn">+ New board</button>
       </div>
     </header>
@@ -21,35 +20,7 @@
 
     <div id="reactionMenu" class="reaction-menu" role="menu" hidden></div>
 
-    <dialog id="targetsModal" class="relay-target-dialog">
-      <div class="bob-manage relay-target-manager">
-        <h2>Relay targets</h2>
-        <p class="bob-hint">Named SFTP locations that boards can publish through.</p>
-        <div id="relayTargetList" class="relay-target-list"></div>
-        <button type="button" id="newTargetBtn">+ Add SFTP target</button>
-        <menu><button type="button" id="closeTargetsBtn">Close</button></menu>
-      </div>
-    </dialog>
 
-    <dialog id="targetEditorModal" class="relay-target-dialog">
-      <form method="dialog" id="targetForm" class="bob-manage relay-target-form">
-        <h2 id="targetEditorTitle">Add SFTP target</h2>
-        <div class="relay-target-form-grid">
-          <label>Name<input id="targetName" required /></label>
-          <label>Host<input id="targetHost" required /></label>
-          <label>Port<input id="targetPort" type="number" min="1" max="65535" value="22" required /></label>
-          <label>Username<input id="targetUsername" required /></label>
-          <label>Password<input id="targetPassword" type="password" /></label>
-          <label>Remote root<input id="targetRoot" value="/" required /></label>
-          <label>Poll every (seconds)<input id="targetPollInterval" type="number" min="1" max="300" value="3" required /></label>
-        </div>
-        <p id="targetPasswordHint" class="bob-hint">The password is stored locally in this client's session data.</p>
-        <menu>
-          <button type="button" id="cancelTargetBtn">Cancel</button>
-          <button type="submit" class="primary">Test &amp; save</button>
-        </menu>
-      </form>
-    </dialog>
 
     <dialog id="cardModal">
       <form method="dialog" id="cardForm">
@@ -92,27 +63,6 @@
       </form>
     </dialog>
 
-    <dialog id="shareModal">
-      <div class="bob-manage">
-        <h2 id="shareModalTitle">Share board</h2>
-        <p class="bob-hint">Copy a token and send it to someone so they can connect to this board.</p>
-        <label>Relay target<select id="shareTargetSelect"></select></label>
-        <div class="bob-manage-actions">
-          <button type="button" id="copyShareTokenBtn">Copy token</button>
-        </div>
-        <p class="bob-hint">Received a token from someone else? Paste it here to connect.</p>
-        <div class="bob-manage-actions">
-          <input id="shareConnectInput" placeholder="Paste a token" />
-          <button type="button" id="shareConnectBtn">Connect</button>
-        </div>
-        <div class="bob-manage-actions">
-          <button type="button" id="shareUnshareBtn" class="danger">Stop discussing this board</button>
-        </div>
-        <menu>
-          <button type="button" id="closeShareBtn">Close</button>
-        </menu>
-      </div>
-    </dialog>
 
     <dialog id="confirmModal">
       <h2 id="confirmModalTitle">Action</h2>
@@ -134,7 +84,6 @@
       let modalLocalDraft = null;
       let modalReadOnlyPerspective = false;
       let settingsBoard = null;
-      let shareBoardUuid = null;
       const el = (id) => document.getElementById(id);
 
       async function api(path, body) {
@@ -190,102 +139,6 @@
           container.append(lane);
         });
       }
-
-      function renderRelayTargets() {
-        const container = el("relayTargetList");
-        container.replaceChildren();
-        const targets = state.channel_targets || [];
-        if (!targets.length) {
-          const empty = document.createElement("p");
-          empty.className = "bob-hint";
-          empty.textContent = "No relay targets configured.";
-          container.append(empty);
-          return;
-        }
-        for (const target of targets) {
-          const row = document.createElement("div");
-          row.className = "relay-target-row";
-          const details = document.createElement("div");
-          const title = document.createElement("strong");
-          title.textContent = target.name;
-          const meta = document.createElement("small");
-          const location = target.backend === "sftp"
-            ? `${target.username}@${target.host}:${target.port}${target.root}`
-            : target.root;
-          const timing = target.timing || {};
-          const timingText = timing.roundtrip_ms == null
-            ? "timing pending"
-            : `RTT ${Math.round(timing.roundtrip_ms)} ms · relay ${Math.round(timing.relay_cycle_ms || 0)} ms`;
-          meta.textContent = `${location} · ${timingText}`;
-          if (timing.server_clock_offset_ms != null) {
-            meta.title = `Relay clock offset ${Math.round(timing.server_clock_offset_ms)} ms (±${Math.round(timing.clock_uncertainty_ms || 0)} ms)`;
-          }
-          details.append(title, meta);
-          const actions = document.createElement("div");
-          const test = smallButton("Test", () => run(
-            () => api("/api/channels/mailbox/targets/test", {target_id: target.id}),
-            `${target.name} is reachable`,
-          ));
-          actions.append(test);
-          actions.append(smallButton("Edit", () => openTargetEditor(target)));
-          actions.append(smallButton("Delete", () => confirmAction(
-            `Delete ${target.name}?`,
-            "Boards assigned to it will become unassigned.",
-            () => run(
-              () => api("/api/channels/mailbox/targets/delete", {target_id: target.id}),
-              "Relay target deleted",
-            ),
-          )));
-          row.append(details, actions);
-          container.append(row);
-        }
-      }
-
-      el("manageTargetsBtn").onclick = () => {
-        renderRelayTargets();
-        el("targetsModal").showModal();
-      };
-      el("closeTargetsBtn").onclick = () => el("targetsModal").close();
-      let editingTargetId = null;
-      function openTargetEditor(target = null) {
-        editingTargetId = target?.id || null;
-        el("targetForm").reset();
-        el("targetEditorTitle").textContent = target ? "Edit SFTP target" : "Add SFTP target";
-        el("targetName").value = target?.name || "";
-        el("targetHost").value = target?.host || "";
-        el("targetPort").value = target?.port || "22";
-        el("targetUsername").value = target?.username || "";
-        el("targetRoot").value = target?.root || "/";
-        el("targetPollInterval").value = target?.poll_interval_seconds || "3";
-        el("targetPasswordHint").textContent = target?.has_password
-          ? "Leave the password empty to keep the saved password."
-          : "The password is stored locally in this client's session data.";
-        el("targetEditorModal").showModal();
-      }
-      el("newTargetBtn").onclick = () => openTargetEditor();
-      el("cancelTargetBtn").onclick = () => el("targetEditorModal").close();
-      el("targetForm").onsubmit = async (event) => {
-        event.preventDefault();
-        try {
-          await api("/api/channels/mailbox/targets", {
-            target_id: editingTargetId,
-            name: el("targetName").value,
-            backend: "sftp",
-            host: el("targetHost").value,
-            port: Number(el("targetPort").value),
-            username: el("targetUsername").value,
-            password: el("targetPassword").value,
-            root: el("targetRoot").value,
-            poll_interval_seconds: Number(el("targetPollInterval").value),
-          });
-          el("targetEditorModal").close();
-          await load();
-          renderRelayTargets();
-          showToast("Relay target tested and saved");
-        } catch (err) {
-          showToast(err.message, true);
-        }
-      };
 
       function renderExpandedBoard(board, index, total) {
         const panel = document.createElement("section");
@@ -963,90 +816,24 @@
       });
 
       // The token itself is plain JSON assembled server-side (only the
-      // server knows which channels - e.g. relay - it actually has
-      // configured); base64 here is purely a copy/paste-friendly wrapper
-      // for the browser, not a wire-format requirement.
-      async function fetchConnectToken(topicUuids, targetId) {
-        if (!targetId) throw new Error("Assign a relay target first");
-        return api("/api/connect_token", {
-          channel_options: { mailbox: { target_id: targetId } },
-          topic_uuids: topicUuids,
+      async function openShareModal(board) {
+        SovereignShell.openConnectionPanel({
+          topicUuid: board.uuid,
+          targetId: board.channel_target_id || "",
+          extras: [{
+            label: "Stop discussing this board",
+            className: "danger",
+            onClick: () => confirmAction(
+              "Stop discussing this board?",
+              "This stops discussing it with everyone currently on it. The board itself is not deleted.",
+              () => run(
+                () => api("/api/kanban/boards/unshare", { board_uuid: board.uuid }),
+                "Stopped discussing this board",
+              ),
+            ),
+          }],
         });
       }
-
-      function decodeConnectToken(encoded) {
-        const token = JSON.parse(atob(encoded.trim()));
-        if (token.token_version !== 1 || !Array.isArray(token.topic_uuids) || !token.topic_uuids.length) {
-          throw new Error("Invalid or unrecognized token");
-        }
-        return token;
-      }
-
-      async function openShareModal(board) {
-        shareBoardUuid = board.uuid;
-        el("shareModalTitle").textContent = `Share "${board.name}"`;
-        el("shareConnectInput").value = "";
-        const targetSelect = el("shareTargetSelect");
-        targetSelect.replaceChildren();
-        const empty = document.createElement("option");
-        empty.value = "";
-        empty.textContent = "Not assigned";
-        targetSelect.append(empty);
-        for (const target of state.channel_targets || []) {
-          const option = document.createElement("option");
-          option.value = target.id;
-          option.textContent = target.name;
-          targetSelect.append(option);
-        }
-        targetSelect.value = board.channel_target_id || "";
-        el("copyShareTokenBtn").disabled = !targetSelect.value;
-        targetSelect.onchange = async () => {
-          try {
-            await api("/api/channels/mailbox/topics/assign", {
-              topic_uuid: board.uuid,
-              target_id: targetSelect.value || null,
-            });
-            board.channel_target_id = targetSelect.value || null;
-            el("copyShareTokenBtn").disabled = !targetSelect.value;
-            showToast(targetSelect.value ? "Relay target assigned" : "Relay target removed");
-          } catch (err) {
-            showToast(err.message, true);
-          }
-        };
-        el("shareModal").showModal();
-      }
-
-      el("copyShareTokenBtn").onclick = async () => {
-        try {
-          const token = await fetchConnectToken([shareBoardUuid], el("shareTargetSelect").value);
-          await navigator.clipboard.writeText(btoa(JSON.stringify(token)));
-          showToast("Token copied");
-        } catch (err) {
-          showToast(err.message, true);
-        }
-      };
-
-      el("shareConnectBtn").onclick = () => {
-        let token;
-        try {
-          token = decodeConnectToken(el("shareConnectInput").value);
-        } catch (err) {
-          showToast("Invalid token", true);
-          return;
-        }
-        run(() => api("/api/connect", { token }), "Connected");
-      };
-
-      el("shareUnshareBtn").onclick = () => {
-        el("shareModal").close();
-        confirmAction(
-          "Stop discussing this board?",
-          "This stops discussing it with everyone currently on it. The board itself is not deleted.",
-          () => run(() => api("/api/kanban/boards/unshare", { board_uuid: shareBoardUuid }), "Stopped discussing this board"),
-        );
-      };
-
-      el("closeShareBtn").onclick = () => el("shareModal").close();
 
       async function openShareModalFromUrl() {
         const params = new URLSearchParams(window.location.search);
@@ -1058,6 +845,13 @@
         const query = params.toString();
         window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
       }
+
+      SovereignShell.mount({
+        container: el("shell"),
+        applicationId: "personal-cockpit",
+        state: () => state || {},
+        onChanged: () => load(),
+      });
 
       load()
         .then(openShareModalFromUrl)
