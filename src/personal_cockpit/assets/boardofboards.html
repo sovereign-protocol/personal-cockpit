@@ -310,7 +310,10 @@
         main.className = "bob-board-main";
         const title = document.createElement("a");
         title.className = "bob-board-title";
-        title.href = `/?board=${encodeURIComponent(board.uuid)}`;
+        // Address Kanban by its own asset prefix, not "/". The root serves
+        // whichever application is primary, which is this one whenever the
+        // cockpit is running, so "/" navigated straight back here.
+        title.href = `/apps/kanban?board=${encodeURIComponent(board.uuid)}`;
         title.textContent = board.name;
         main.append(title, objectiveElement(board));
         header.append(main);
