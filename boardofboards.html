@@ -967,7 +967,7 @@
         if (!targetId) throw new Error("Assign a relay target first");
         return api("/api/connect_token", {
           target_id: targetId,
-          board_uuids: topicUuids,
+          topic_uuids: topicUuids,
         });
       }
 
@@ -999,8 +999,8 @@
         el("copyShareTokenBtn").disabled = !targetSelect.value;
         targetSelect.onchange = async () => {
           try {
-            await api("/api/relay/boards/assign", {
-              board_uuid: board.uuid,
+            await api("/api/relay/topics/assign", {
+              topic_uuid: board.uuid,
               target_id: targetSelect.value || null,
             });
             board.relay_target_id = targetSelect.value || null;

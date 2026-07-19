@@ -77,7 +77,7 @@ class BoardOfBoardsLogic:
         relay_manager = self.config.get("_relay_manager")
         if relay_manager:
             for board in boards_out:
-                board["relay_target_id"] = relay_manager.target_for_board(board["uuid"])
+                board["relay_target_id"] = relay_manager.target_for_topic(board["uuid"])
         return {
             "boards": boards_out,
             # Every peer this session knows about, for the card-edit modal's
