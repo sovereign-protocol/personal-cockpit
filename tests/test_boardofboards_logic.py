@@ -2,17 +2,71 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sovereign import app_server
+import app_server
 from personal_cockpit.logic import BoardOfBoardsLogic
 from s_kanban.logic import KanbanLogic
 from sovereign.protocol import ProtocolNode
 
 
+class _FacadeLookup:
+    def __init__(self, kanban):
+        self.kanban = kanban
+
+    def find(self, application_id, facade_api_version):
+        if application_id == "kanban" and facade_api_version == 1:
+            return self.kanban
+        return None
+
+
+def cockpit(runtime):
+    return BoardOfBoardsLogic(
+        runtime.session,
+        runtime.config,
+        facades=_FacadeLookup(runtime.logic),
+    )
+
+
 class BoardOfBoardsLogicTests(unittest.TestCase):
+    def test_application_host_supplies_live_kanban_facade(self):
+        directory = tempfile.TemporaryDirectory()
+        config = app_server.load_config(None, "boardofboards")
+        config["storage_file"] = str(Path(directory.name) / "cockpit.json")
+        runtime = app_server.create_runtime(8498, config)
+        runtime._test_tmp = directory
+        kanban = runtime.host.instances["kanban"].logic
+        kanban.ensure_board()
+
+        self.assertEqual(runtime.host.primary_instance.manifest.application_id,
+                         "personal-cockpit")
+        self.assertEqual(len(runtime.logic.summary_payload()["boards"]), 1)
+        self.assertTrue(
+            runtime.logic.summary_payload()["sources"]["kanban"]["available"],
+        )
+
+    def test_without_kanban_facade_is_empty_and_reports_source_unavailable(self):
+        directory = tempfile.TemporaryDirectory()
+        config = app_server.load_config()
+        config.update({
+            "applications": [{"module": "personal_cockpit.application"}],
+            "primary_application_id": "personal-cockpit",
+            "storage_file": str(Path(directory.name) / "cockpit-only.json"),
+        })
+        runtime = app_server.create_runtime(8499, config)
+        runtime._test_tmp = directory
+        bob = runtime.logic
+
+        payload = bob.summary_payload()
+
+        self.assertEqual(payload["boards"], [])
+        self.assertFalse(payload["sources"]["kanban"]["available"])
+        self.assertIn("not active", payload["sources"]["kanban"]["reason"])
+        result = bob.reorder_boards([])
+        self.assertEqual(result.status, "error")
+
     def test_summary_lists_all_boards_collapsed_by_default(self):
         runtime = self.runtime(8501)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
 
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
@@ -29,7 +83,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_summary_carries_columns_and_settings_for_each_board(self):
         runtime = self.runtime(8511)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
 
@@ -55,7 +109,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_active_and_next_bands_partition_by_mapped_columns(self):
         runtime = self.runtime(8502)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
         my_id = kanban.user_profile().uuid
@@ -73,7 +127,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_cards_without_owner_or_participant_are_excluded(self):
         runtime = self.runtime(8513)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
         my_id = kanban.user_profile().uuid
@@ -90,7 +144,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_owner_cards_sort_before_participant_cards(self):
         runtime = self.runtime(8514)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
         my_id = kanban.user_profile().uuid
@@ -111,7 +165,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_card_summary_includes_people_labels(self):
         runtime = self.runtime(8524)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         kanban.session.set_identity("Andrea")
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -132,7 +186,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_summary_payload_lists_known_people_for_the_card_picker(self):
         runtime = self.runtime(8527)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         kanban.session.set_identity("Andrea")
         my_id = kanban.user_profile().uuid
 
@@ -145,7 +199,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_summary_counts_cards_in_discussion(self):
         runtime = self.runtime(8525)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
         my_id = kanban.user_profile().uuid
@@ -180,7 +234,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_card_perspectives_include_multiple_absent_versions_and_dedupe_forwarding(self):
         runtime = self.runtime(8528)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         card = kanban.create_card(kanban.columns(board)[0].uuid, "Task").value
         revision_a = "revision-a"
@@ -198,7 +252,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_selected_flag_is_summary_only_and_toggles(self):
         runtime = self.runtime(8503)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
         my_id = kanban.user_profile().uuid
@@ -222,7 +276,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_unpick_board_collapses_and_leaves_the_real_board_untouched(self):
         runtime = self.runtime(8504)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         bob.pick_board(board.uuid, [], [])
 
@@ -236,7 +290,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_reorder_boards_keeps_unmentioned_boards_appended(self):
         runtime = self.runtime(8505)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
         board_c_uuid = kanban.create_board("Board C").value
@@ -260,7 +314,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         # untouched either way.
         runtime = self.runtime(8526)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
         board_c_uuid = kanban.create_board("Board C").value
@@ -279,7 +333,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_summary_drops_a_picked_board_that_no_longer_exists(self):
         runtime = self.runtime(8506)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
         bob.pick_board(board_a.uuid, [], [])
@@ -293,7 +347,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_card_edits_via_kanban_logic_are_reflected_in_next_summary(self):
         runtime = self.runtime(8507)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
         my_id = kanban.user_profile().uuid
@@ -312,7 +366,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_pick_board_ignores_column_uuids_from_a_different_board(self):
         runtime = self.runtime(8508)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
         board_b = runtime.session.protocol.index[board_b_uuid]
@@ -326,7 +380,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_pick_board_does_not_allow_same_column_as_active_and_next(self):
         runtime = self.runtime(8512)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo = kanban.columns(board)[0]
 
@@ -339,7 +393,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_collapse_keeps_column_mapping(self):
         runtime = self.runtime(8515)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
         bob.update_board_settings(
@@ -358,7 +412,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_toggle_selected_rejects_unknown_card(self):
         runtime = self.runtime(8509)
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
 
         result = bob.toggle_selected("does-not-exist")
 
@@ -367,7 +421,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_objective_field_defaults_to_empty_and_is_settable(self):
         runtime = self.runtime(8510)
         kanban: KanbanLogic = runtime.logic
-        bob = BoardOfBoardsLogic(runtime.session, runtime.config)
+        bob = cockpit(runtime)
         board = kanban.ensure_board()
         bob.pick_board(board.uuid, [], [])
 

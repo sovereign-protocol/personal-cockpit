@@ -1,6 +1,6 @@
 """Personal Cockpit manifest and host wiring."""
 
-from sovereign.application import (
+from sovereign import (
     ApplicationInstance, ApplicationManifest, ApplicationServices,
 )
 
@@ -23,6 +23,7 @@ def create_application(services: ApplicationServices) -> ApplicationInstance:
         services.session,
         dict(services.settings),
         services.channel_manager,
+        services.facades,
     )
     return ApplicationInstance(
         manifest=APPLICATION_MANIFEST,

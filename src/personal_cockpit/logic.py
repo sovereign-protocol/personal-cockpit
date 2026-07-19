@@ -30,32 +30,78 @@ Offered API:
   create_logic(session, config)
 
 Used API:
-  kanban_logic.KanbanLogic (boards/columns/cards queries only) and
-  session.Session.
+  The optional, versioned Kanban application facade and session.Session.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
-from s_kanban.logic import KanbanLogic
-from sovereign.protocol import ProtocolNode
-from sovereign.session import Session, SessionResult
+from sovereign import ProtocolNode, Session, SessionResult
 
 
 PERSONAL_COCKPIT_APPLICATION_ID = "personal-cockpit"
 APP_METADATA_KEY = PERSONAL_COCKPIT_APPLICATION_ID
+KANBAN_APPLICATION_ID = "kanban"
+KANBAN_FACADE_API_VERSION = 1
+
+
+class FacadeLookup(Protocol):
+    def find(self, application_id: str, facade_api_version: int) -> Any | None: ...
+
+
 class BoardOfBoardsLogic:
     def __init__(self, session: Session, config: dict | None = None,
-                 channel_manager=None):
+                 channel_manager=None, facades: FacadeLookup | None = None):
         self.session = session
         self.config = config or {}
         self.channel_manager = channel_manager
-        self.kanban = KanbanLogic(session, self.config, channel_manager)
+        self.facades = facades
+        self._kanban_facade_error = ""
+
+    def _kanban(self):
+        if self.facades is None:
+            self._kanban_facade_error = "Kanban application is not active"
+            return None
+        try:
+            facade = self.facades.find(
+                KANBAN_APPLICATION_ID, KANBAN_FACADE_API_VERSION,
+            )
+        except ValueError as exc:
+            self._kanban_facade_error = str(exc)
+            return None
+        self._kanban_facade_error = (
+            "" if facade is not None else "Kanban application is not active"
+        )
+        return facade
+
+    @property
+    def kanban(self):
+        facade = self._kanban()
+        if facade is None:
+            raise RuntimeError(self._kanban_facade_error)
+        return facade
 
     def summary_payload(self) -> dict:
         metadata = self._metadata()
-        boards = self.kanban.boards()
+        kanban = self._kanban()
+        channel_manager = self.channel_manager
+        if kanban is None:
+            return {
+                "boards": [],
+                "people": [],
+                "users": [],
+                "channel_targets": (
+                    channel_manager.list_targets() if channel_manager else []
+                ),
+                "sources": {
+                    KANBAN_APPLICATION_ID: {
+                        "available": False,
+                        "reason": self._kanban_facade_error,
+                    },
+                },
+            }
+        boards = kanban.boards()
         settings_by_board = self._normalized_settings(boards)
         boards_out = [
             self._board_summary(board, settings_by_board.get(board.uuid, {}))
@@ -69,7 +115,6 @@ class BoardOfBoardsLogic:
                 ),
             )
         ]
-        channel_manager = self.channel_manager
         if channel_manager:
             for board in boards_out:
                 board["channel_target_id"] = channel_manager.target_for_topic(board["uuid"])
@@ -80,8 +125,9 @@ class BoardOfBoardsLogic:
             # picker, which restricts to current board peers) since Overview
             # spans every board and has no per-board peer topic to filter by.
             "people": list(self._people_by_uuid().values()),
-            "users": self.kanban.users(),
+            "users": kanban.users(),
             "channel_targets": channel_manager.list_targets() if channel_manager else [],
+            "sources": {KANBAN_APPLICATION_ID: {"available": True}},
         }
 
     def _board_summary(self, board: ProtocolNode, settings: dict) -> dict:
@@ -283,10 +329,13 @@ class BoardOfBoardsLogic:
                               expanded: bool | None = None,
                               active_column_uuid: str | None = None,
                               next_column_uuid: str | None = None) -> SessionResult:
+        kanban = self._kanban()
+        if kanban is None:
+            return SessionResult("error", reason=self._kanban_facade_error)
         board = self.session.protocol.index.get(board_uuid)
         if not board or board.data.get("type") != "kanban_board":
             return SessionResult("error", reason="board not found")
-        valid_column_uuids = {column.uuid for column in self.kanban.columns(board)}
+        valid_column_uuids = {column.uuid for column in kanban.columns(board)}
         metadata = self._metadata()
         settings = metadata.setdefault("board_settings", {})
         current = dict(settings.get(board_uuid, {}))
@@ -310,15 +359,18 @@ class BoardOfBoardsLogic:
         # ordering in the UI, so reordering only ever touches the group
         # the moved board already belongs to - the caller always passes
         # the full uuid list for that one group, never a mix of both.
+        kanban = self._kanban()
+        if kanban is None:
+            return SessionResult("error", reason=self._kanban_facade_error)
         metadata = self._metadata()
         settings = metadata.setdefault("board_settings", {})
-        valid_uuids = {board.uuid for board in self.kanban.boards()}
+        valid_uuids = {board.uuid for board in kanban.boards()}
         mentioned = [uuid for uuid in board_uuids if uuid in valid_uuids]
         if not mentioned:
             return SessionResult("ok", value=[])
         expanded_flag = bool(settings.get(mentioned[0], {}).get("expanded", False))
         same_group = {
-            board.uuid for board in self.kanban.boards()
+            board.uuid for board in kanban.boards()
             if bool(settings.get(board.uuid, {}).get("expanded", False)) == expanded_flag
         }
         ordered = [uuid for uuid in mentioned if uuid in same_group]

@@ -1,5 +1,6 @@
 {
   "applications": [
+    {"module": "s_kanban.application"},
     {"module": "personal_cockpit.application"}
   ],
   "primary_application_id": "personal-cockpit"
