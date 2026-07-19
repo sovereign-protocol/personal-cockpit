@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import Any
 
 from kanban_logic import KanbanLogic
-from protocol import PRSPNode
+from protocol import ProtocolNode
 from session import Session, SessionResult
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
@@ -89,7 +89,7 @@ class BoardOfBoardsLogic:
             "relay_targets": relay_manager.list_targets() if relay_manager else [],
         }
 
-    def _board_summary(self, board: PRSPNode, settings: dict) -> dict:
+    def _board_summary(self, board: ProtocolNode, settings: dict) -> dict:
         columns = self.kanban.columns(board)
         columns_by_uuid = {column.uuid: column for column in columns}
         people_by_uuid = self._people_by_uuid()
@@ -161,14 +161,14 @@ class BoardOfBoardsLogic:
         }
 
     @staticmethod
-    def _relevance(card: PRSPNode, my_id: str) -> str | None:
+    def _relevance(card: ProtocolNode, my_id: str) -> str | None:
         if card.data.get("owner") == my_id:
             return "owner"
         if my_id in (card.data.get("participants") or []):
             return "participant"
         return None
 
-    def _discussion_card_count(self, board: PRSPNode) -> int:
+    def _discussion_card_count(self, board: ProtocolNode) -> int:
         card_uuids = set()
         for event in self.kanban.transition_events(board.uuid):
             if event.get("type") in ("in_agreement", "in_transition"):
@@ -218,8 +218,8 @@ class BoardOfBoardsLogic:
 
     def _card_summary(
         self,
-        card: PRSPNode,
-        column: PRSPNode,
+        card: ProtocolNode,
+        column: ProtocolNode,
         people_by_uuid: dict[str, dict],
         transition_by_node: dict,
     ) -> dict:
@@ -244,7 +244,7 @@ class BoardOfBoardsLogic:
             "column_name": column.data.get("name", ""),
         }
 
-    def _card_perspectives(self, card: PRSPNode, transition: dict | None) -> list[dict]:
+    def _card_perspectives(self, card: ProtocolNode, transition: dict | None) -> list[dict]:
         """Return complete peer card versions represented by active differences."""
         if not transition:
             return []
@@ -366,7 +366,7 @@ class BoardOfBoardsLogic:
         apps = self.session.app_metadata.setdefault("apps", {})
         return apps.setdefault(APP_METADATA_KEY, {})
 
-    def _normalized_settings(self, boards: list[PRSPNode]) -> dict[str, dict]:
+    def _normalized_settings(self, boards: list[ProtocolNode]) -> dict[str, dict]:
         metadata = self._metadata()
         settings = metadata.setdefault("board_settings", {})
         self._migrate_old_metadata(settings)

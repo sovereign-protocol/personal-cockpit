@@ -5,7 +5,7 @@ from pathlib import Path
 import app_server
 from boardofboards_logic import BoardOfBoardsLogic
 from kanban_logic import KanbanLogic
-from protocol import PRSPNode
+from protocol import ProtocolNode
 
 
 class BoardOfBoardsLogicTests(unittest.TestCase):
@@ -154,7 +154,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         runtime.session.add_peer("http://peer", board.uuid)
         runtime.session.apply_peer_subtree(
             "http://peer",
-            PRSPNode.from_dict(runtime.session.protocol.index[board.uuid].to_dict()),
+            ProtocolNode.from_dict(runtime.session.protocol.index[board.uuid].to_dict()),
             runtime.session.protocol.root.uuid,
         )
 
