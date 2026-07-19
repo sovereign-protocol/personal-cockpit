@@ -1,0 +1,7 @@
+{
+  "applications": [
+    {"module": "personal_cockpit.application"}
+  ],
+  "primary_application_id": "personal-cockpit",
+  "advertise_host": "127.0.0.1"
+}
