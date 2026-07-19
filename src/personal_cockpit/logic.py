@@ -38,12 +38,12 @@ Used API:
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+from importlib.resources import files
 from typing import Any
 
-from kanban_logic import KanbanLogic
-from protocol import ProtocolNode
-from session import Session, SessionResult
+from s_kanban.logic import KanbanLogic
+from sovereign.protocol import ProtocolNode
+from sovereign.session import Session, SessionResult
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
@@ -461,9 +461,9 @@ def build_routes(logic: BoardOfBoardsLogic, runtime, config: dict) -> list[Route
 
 
 def _read_static(filename: str) -> str:
-    path = Path(__file__).with_name(filename)
-    with path.open(encoding="utf-8") as f:
-        return f.read()
+    return files("personal_cockpit.assets").joinpath(filename).read_text(
+        encoding="utf-8",
+    )
 
 
 async def _json_result(runtime, result: SessionResult) -> JSONResponse:

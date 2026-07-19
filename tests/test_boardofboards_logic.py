@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import app_server
-from boardofboards_logic import BoardOfBoardsLogic
-from kanban_logic import KanbanLogic
-from protocol import ProtocolNode
+from sovereign import app_server
+from personal_cockpit.logic import BoardOfBoardsLogic
+from s_kanban.logic import KanbanLogic
+from sovereign.protocol import ProtocolNode
 
 
 class BoardOfBoardsLogicTests(unittest.TestCase):

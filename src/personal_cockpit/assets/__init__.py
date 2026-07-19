@@ -1,0 +1,1 @@
+"""Personal Cockpit browser assets."""
