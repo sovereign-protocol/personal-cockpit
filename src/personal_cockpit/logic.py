@@ -38,25 +38,38 @@ Used API:
 from __future__ import annotations
 
 import asyncio
-from importlib.resources import files
 from typing import Any
 
 from s_kanban.logic import KanbanLogic
+from sovereign.application import (
+    ApplicationInstance, ApplicationManifest, ApplicationServices,
+)
 from sovereign.protocol import ProtocolNode
 from sovereign.session import Session, SessionResult
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 
-APP_METADATA_KEY = "Board of Boards"
+PERSONAL_COCKPIT_APPLICATION_ID = "personal-cockpit"
+APP_METADATA_KEY = PERSONAL_COCKPIT_APPLICATION_ID
+APPLICATION_MANIFEST = ApplicationManifest(
+    application_id=PERSONAL_COCKPIT_APPLICATION_ID,
+    display_name="Personal Cockpit",
+    data_schema_version=1,
+    asset_package="personal_cockpit.assets",
+    ui_file="boardofboards.html",
+    css_file="boardofboards.css",
+)
 
 
 class BoardOfBoardsLogic:
-    def __init__(self, session: Session, config: dict):
+    def __init__(self, session: Session, config: dict | None = None,
+                 relay_manager=None):
         self.session = session
-        self.config = config
-        self.kanban = KanbanLogic(session, config)
+        self.config = config or {}
+        self.relay_manager = relay_manager
+        self.kanban = KanbanLogic(session, self.config, relay_manager)
 
     def summary_payload(self) -> dict:
         metadata = self._metadata()
@@ -74,7 +87,7 @@ class BoardOfBoardsLogic:
                 ),
             )
         ]
-        relay_manager = self.config.get("_relay_manager")
+        relay_manager = self.relay_manager or self.config.get("_relay_manager")
         if relay_manager:
             for board in boards_out:
                 board["relay_target_id"] = relay_manager.target_for_topic(board["uuid"])
@@ -406,16 +419,24 @@ class BoardOfBoardsLogic:
 
 
 def create_logic(session: Session, config: dict) -> BoardOfBoardsLogic:
-    return BoardOfBoardsLogic(session, config)
+    return BoardOfBoardsLogic(session, config, config.get("_relay_manager"))
+
+
+def create_application(services: ApplicationServices) -> ApplicationInstance:
+    logic = BoardOfBoardsLogic(
+        services.session,
+        dict(services.settings),
+        services.relay_manager,
+    )
+    return ApplicationInstance(
+        manifest=APPLICATION_MANIFEST,
+        logic=logic,
+        registration=None,
+        controllers=tuple(build_routes(logic, services, dict(services.settings))),
+    )
 
 
 def build_routes(logic: BoardOfBoardsLogic, runtime, config: dict) -> list[Route]:
-    async def serve_ui(request: Request):
-        return HTMLResponse(_read_static("boardofboards.html"))
-
-    async def serve_css(request: Request):
-        return Response(_read_static("boardofboards.css"), media_type="text/css")
-
     async def api_summary(request: Request):
         return JSONResponse(logic.summary_payload())
 
@@ -449,21 +470,13 @@ def build_routes(logic: BoardOfBoardsLogic, runtime, config: dict) -> list[Route
         return await _json_result(runtime, logic.toggle_selected(data["card_uuid"]))
 
     return [
-        Route("/summary", serve_ui),
-        Route("/summary.css", serve_css),
-        Route("/api/boardofboards/summary", api_summary),
-        Route("/api/boardofboards/boards/settings", api_update_board_settings, methods=["POST"]),
-        Route("/api/boardofboards/boards/pick", api_pick_board, methods=["POST"]),
-        Route("/api/boardofboards/boards/unpick", api_unpick_board, methods=["POST"]),
-        Route("/api/boardofboards/boards/reorder", api_reorder_boards, methods=["POST"]),
-        Route("/api/boardofboards/cards/toggle_selected", api_toggle_selected, methods=["POST"]),
+        Route("/api/personal-cockpit/summary", api_summary),
+        Route("/api/personal-cockpit/boards/settings", api_update_board_settings, methods=["POST"]),
+        Route("/api/personal-cockpit/boards/pick", api_pick_board, methods=["POST"]),
+        Route("/api/personal-cockpit/boards/unpick", api_unpick_board, methods=["POST"]),
+        Route("/api/personal-cockpit/boards/reorder", api_reorder_boards, methods=["POST"]),
+        Route("/api/personal-cockpit/cards/toggle_selected", api_toggle_selected, methods=["POST"]),
     ]
-
-
-def _read_static(filename: str) -> str:
-    return files("personal_cockpit.assets").joinpath(filename).read_text(
-        encoding="utf-8",
-    )
 
 
 async def _json_result(runtime, result: SessionResult) -> JSONResponse:

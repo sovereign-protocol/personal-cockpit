@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Personal Overview</title>
     <link rel="stylesheet" href="/shared.css" />
-    <link rel="stylesheet" href="/summary.css" />
+    <link rel="stylesheet" href="/apps/personal-cockpit/styles.css" />
   </head>
   <body>
     <div id="toast" class="toast"></div>
@@ -161,7 +161,7 @@
       }
 
       async function load() {
-        state = await api("/api/boardofboards/summary");
+        state = await api("/api/personal-cockpit/summary");
         render();
       }
 
@@ -482,7 +482,7 @@
         select.onchange = () => {
           const value = select.value;
           if (value === "__selected__") {
-            run(() => api("/api/boardofboards/cards/toggle_selected", { card_uuid: card.uuid }), "Updated");
+            run(() => api("/api/personal-cockpit/cards/toggle_selected", { card_uuid: card.uuid }), "Updated");
             return;
           }
           run(() => api("/api/kanban/cards/move", { card_uuid: card.uuid, column_uuid: value, index: 0 }), "Moved");
@@ -729,7 +729,7 @@
 
       function setExpanded(board, expanded) {
         return run(
-          () => api("/api/boardofboards/boards/settings", { board_uuid: board.uuid, expanded }),
+          () => api("/api/personal-cockpit/boards/settings", { board_uuid: board.uuid, expanded }),
           expanded ? "Expanded" : "Collapsed",
         );
       }
@@ -742,7 +742,7 @@
         const swapWith = index + direction;
         if (swapWith < 0 || swapWith >= order.length) return;
         [order[index], order[swapWith]] = [order[swapWith], order[index]];
-        run(() => api("/api/boardofboards/boards/reorder", { board_uuids: order }), "Reordered");
+        run(() => api("/api/personal-cockpit/boards/reorder", { board_uuids: order }), "Reordered");
       }
 
       function openBoardSettings(board) {
@@ -791,7 +791,7 @@
         el("boardSettingsModal").close();
         run(
           () =>
-            api("/api/boardofboards/boards/settings", {
+            api("/api/personal-cockpit/boards/settings", {
               board_uuid: board.uuid,
               active_column_uuid: el("settingsActiveColumn").value,
               next_column_uuid: el("settingsNextColumn").value,
