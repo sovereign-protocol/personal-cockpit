@@ -112,7 +112,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         runtime = self.runtime(8524)
         kanban: KanbanLogic = runtime.logic
         bob = BoardOfBoardsLogic(runtime.session, runtime.config)
-        kanban.set_user_profile("Andrea")
+        kanban.session.set_identity("Andrea")
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
         my_id = kanban.user_profile().uuid
@@ -133,7 +133,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         runtime = self.runtime(8527)
         kanban: KanbanLogic = runtime.logic
         bob = BoardOfBoardsLogic(runtime.session, runtime.config)
-        kanban.set_user_profile("Andrea")
+        kanban.session.set_identity("Andrea")
         my_id = kanban.user_profile().uuid
 
         payload = bob.summary_payload()
