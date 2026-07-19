@@ -10,6 +10,13 @@ from sovereign.app_server import (
 
 
 APPLICATION_ALIASES = {
+    "kanban": {
+        "app_module": "s_kanban.application",
+        "application_id": "kanban",
+        "asset_package": "s_kanban.assets",
+        "ui_file": "kanban.html",
+        "css_file": "kanban.css",
+    },
     "boardofboards": {
         "app_module": "personal_cockpit.application",
         "application_id": "personal-cockpit",
