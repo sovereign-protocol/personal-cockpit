@@ -9,12 +9,13 @@
   </head>
   <body>
     <div id="toast" class="toast"></div>
-    <header class="bob-topbar">
-      <div id="shell"></div>
-      <div class="bob-topbar-actions">
-        <button id="newBoardBtn">+ New board</button>
-      </div>
-    </header>
+    <!-- The shell owns the bar; "+ New board" is handed to its
+         application-actions slot. -->
+    <header class="bob-topbar"><div id="shell"></div></header>
+
+    <template id="cockpitHeaderControls">
+      <button id="newBoardBtn">+ New board</button>
+    </template>
 
     <main id="boards" class="bob-boards"></main>
 
@@ -780,6 +781,16 @@
         );
       });
 
+      const newBoardBtn = el("cockpitHeaderControls").content.querySelector("#newBoardBtn");
+
+      SovereignShell.mount({
+        container: el("shell"),
+        applicationId: "personal-cockpit",
+        state: () => state || {},
+        onChanged: () => load(),
+      });
+      SovereignShell.setAppActions(newBoardBtn);
+
       el("newBoardBtn").onclick = () => {
         el("newBoardName").value = "Kanban Board";
         const select = el("newBoardTemplate");
@@ -846,12 +857,6 @@
         window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
       }
 
-      SovereignShell.mount({
-        container: el("shell"),
-        applicationId: "personal-cockpit",
-        state: () => state || {},
-        onChanged: () => load(),
-      });
 
       load()
         .then(openShareModalFromUrl)

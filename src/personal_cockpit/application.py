@@ -13,6 +13,13 @@ APPLICATION_MANIFEST = ApplicationManifest(
     display_name="Personal Cockpit",
     data_schema_version=1,
     asset_package="personal_cockpit.assets",
+    icon=(
+        '<rect x="3" y="3" width="7" height="7" rx="1"></rect>'
+        '<rect x="14" y="3" width="7" height="7" rx="1"></rect>'
+        '<rect x="3" y="14" width="7" height="7" rx="1"></rect>'
+        '<rect x="14" y="14" width="7" height="7" rx="1"></rect>'
+    ),
+    role="aggregator",
     ui_file="boardofboards.html",
     css_file="boardofboards.css",
 )
