@@ -14,7 +14,10 @@
     <header class="bob-topbar"><div id="shell"></div></header>
 
     <template id="cockpitHeaderControls">
-      <button id="newBoardBtn">+ New board</button>
+      <div class="bob-add-new">
+        <button id="addNewBtn" aria-haspopup="true">+ Add new</button>
+        <div id="addNewMenu" class="bob-add-menu" hidden></div>
+      </div>
     </template>
 
     <main id="boards" class="bob-boards"></main>
@@ -119,10 +122,11 @@
       function render() {
         const container = el("boards");
         container.replaceChildren();
-        if (!state.boards.length) {
+        const agreements = state.agreements || [];
+        if (!state.boards.length && !agreements.length) {
           const empty = document.createElement("p");
           empty.className = "bob-empty";
-          empty.textContent = "No boards yet.";
+          empty.textContent = "Nothing yet - use “+ Add new”.";
           container.append(empty);
           return;
         }
@@ -139,6 +143,59 @@
           );
           container.append(lane);
         });
+        // Agreements are simple movable tiles, never expandable - an
+        // agreement has no active/next bands to open. They share the
+        // collapsed lane's layout, in their own lane after the boards.
+        chunk(agreements, 5).forEach((group, chunkIndex) => {
+          const lane = document.createElement("section");
+          lane.className = "bob-collapsed-lane bob-agreement-lane";
+          group.forEach((agreement, i) =>
+            lane.append(renderAgreementTile(agreement, chunkIndex * 5 + i, agreements.length)),
+          );
+          container.append(lane);
+        });
+      }
+
+      function renderAgreementTile(agreement, index, total) {
+        const tile = document.createElement("section");
+        tile.className = "bob-board collapsed bob-agreement-tile";
+        const header = document.createElement("div");
+        header.className = "bob-board-header";
+        const main = document.createElement("div");
+        main.className = "bob-board-main";
+        const title = document.createElement("a");
+        title.className = "bob-board-title";
+        title.href = `/apps/agreement?agreement=${encodeURIComponent(agreement.uuid)}`;
+        title.textContent = agreement.title || "Untitled agreement";
+        main.append(title);
+        header.append(main);
+        const tools = document.createElement("div");
+        tools.className = "bob-board-tools";
+        const controls = document.createElement("div");
+        controls.className = "bob-board-controls";
+        controls.append(moveButton("<", index === 0, () => moveAgreement(agreement.uuid, -1)));
+        controls.append(moveButton(">", index >= total - 1, () => moveAgreement(agreement.uuid, 1)));
+        const status = document.createElement("span");
+        status.className = "bob-status";
+        if (agreement.unsettled_count > 0) {
+          status.classList.add("bob-status-divergence");
+          status.textContent = `${agreement.unsettled_count} to resolve`;
+        } else {
+          status.textContent = "In agreement";
+        }
+        tools.append(controls, status);
+        header.append(tools);
+        tile.append(header);
+        return tile;
+      }
+
+      function moveAgreement(uuid, direction) {
+        const order = (state.agreements || []).map((entry) => entry.uuid);
+        const index = order.indexOf(uuid);
+        const swapWith = index + direction;
+        if (swapWith < 0 || swapWith >= order.length) return;
+        [order[index], order[swapWith]] = [order[swapWith], order[index]];
+        run(() => api("/api/personal-cockpit/agreements/reorder", { agreement_uuids: order }), "Reordered");
       }
 
       function renderExpandedBoard(board, index, total) {
@@ -781,7 +838,7 @@
         );
       });
 
-      const newBoardBtn = el("cockpitHeaderControls").content.querySelector("#newBoardBtn");
+      const addNew = el("cockpitHeaderControls").content.querySelector(".bob-add-new");
 
       SovereignShell.mount({
         container: el("shell"),
@@ -789,9 +846,13 @@
         state: () => state || {},
         onChanged: () => load(),
       });
-      SovereignShell.setAppActions(newBoardBtn);
+      SovereignShell.setAppActions(addNew);
 
-      el("newBoardBtn").onclick = () => {
+      // "+ Add new" drops a menu of the topic-creating applications this host
+      // actually has - the cockpit routes to each application's create flow
+      // rather than creating anything itself. The board flow keeps its
+      // template modal; a new agreement is created and jumped to as a tile.
+      function openNewBoardModal() {
         el("newBoardName").value = "Kanban Board";
         const select = el("newBoardTemplate");
         select.replaceChildren();
@@ -806,6 +867,42 @@
           select.append(opt);
         }
         el("newBoardModal").showModal();
+      }
+
+      async function createAgreement() {
+        try {
+          const result = await api("/api/agreement/agreements/create",
+            { title: "Untitled agreement" });
+          await load();
+          if (result.value) {
+            window.location.href =
+              `/apps/agreement?agreement=${encodeURIComponent(result.value)}`;
+          }
+        } catch (err) { showToast(err.message, true); }
+      }
+
+      function closeAddNewMenu() { el("addNewMenu").hidden = true; }
+
+      el("addNewBtn").onclick = (event) => {
+        event.stopPropagation();
+        const menu = el("addNewMenu");
+        if (!menu.hidden) { closeAddNewMenu(); return; }
+        menu.replaceChildren();
+        for (const item of state.creatable || [{ application_id: "kanban", label: "Board" }]) {
+          const choice = document.createElement("button");
+          choice.type = "button";
+          choice.textContent = item.label;
+          choice.onclick = () => {
+            closeAddNewMenu();
+            if (item.application_id === "agreement") createAgreement();
+            else openNewBoardModal();
+          };
+          menu.append(choice);
+        }
+        menu.hidden = false;
+        setTimeout(() => {
+          document.addEventListener("click", closeAddNewMenu, { once: true });
+        }, 0);
       };
 
       el("cancelNewBoardBtn").onclick = () => el("newBoardModal").close();

@@ -47,6 +47,12 @@ def build_routes(logic, runtime, config: dict) -> list[Route]:
             runtime, logic.toggle_selected(data["card_uuid"]),
         )
 
+    async def api_reorder_agreements(request: Request):
+        data = await request.json()
+        return await _json_result(
+            runtime, logic.reorder_agreements(data.get("agreement_uuids", [])),
+        )
+
     return [
         Route("/api/personal-cockpit/summary", api_summary),
         Route("/api/personal-cockpit/boards/settings", api_update_board_settings,
@@ -54,6 +60,8 @@ def build_routes(logic, runtime, config: dict) -> list[Route]:
         Route("/api/personal-cockpit/boards/pick", api_pick_board, methods=["POST"]),
         Route("/api/personal-cockpit/boards/unpick", api_unpick_board, methods=["POST"]),
         Route("/api/personal-cockpit/boards/reorder", api_reorder_boards, methods=["POST"]),
+        Route("/api/personal-cockpit/agreements/reorder", api_reorder_agreements,
+              methods=["POST"]),
         Route("/api/personal-cockpit/cards/toggle_selected", api_toggle_selected,
               methods=["POST"]),
     ]

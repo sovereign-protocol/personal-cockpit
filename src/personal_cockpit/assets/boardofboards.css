@@ -736,3 +736,36 @@ button,
   color: var(--muted);
   font-size: 13px;
 }
+
+/* "+ Add new" dropdown and its menu. */
+.bob-add-new { position: relative; }
+.bob-add-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
+}
+.bob-add-menu[hidden] { display: none; }
+.bob-add-menu button {
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  color: #e6edf3;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.bob-add-menu button:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* Agreement tiles: the same footprint as a collapsed board, but simpler -
+   no expand control, no bands, just title, move controls, and status. */
+.bob-agreement-tile .bob-board-title { font-weight: 600; }
+.bob-status.bob-status-divergence { color: #f87171; font-weight: 600; }

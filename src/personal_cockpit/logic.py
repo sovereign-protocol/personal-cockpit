@@ -44,6 +44,8 @@ PERSONAL_COCKPIT_APPLICATION_ID = "personal-cockpit"
 APP_METADATA_KEY = PERSONAL_COCKPIT_APPLICATION_ID
 KANBAN_APPLICATION_ID = "kanban"
 KANBAN_FACADE_API_VERSION = 1
+AGREEMENT_APPLICATION_ID = "agreement"
+AGREEMENT_FACADE_API_VERSION = 1
 
 
 class FacadeLookup(Protocol):
@@ -82,13 +84,76 @@ class BoardOfBoardsLogic:
             raise RuntimeError(self._kanban_facade_error)
         return facade
 
+    def _agreement(self):
+        # Optional, like the Kanban facade: the cockpit shows agreement tiles
+        # only when the agreement application is active in this host.
+        if self.facades is None:
+            return None
+        try:
+            return self.facades.find(
+                AGREEMENT_APPLICATION_ID, AGREEMENT_FACADE_API_VERSION,
+            )
+        except ValueError:
+            return None
+
+    def _agreement_summaries(self) -> list[dict]:
+        agreement = self._agreement()
+        if agreement is None:
+            return []
+        order = self._agreement_order()
+        summaries = []
+        for node in agreement.agreements():
+            events = agreement.transition_events(node.uuid)
+            grouped = agreement.transition_by_node(events)
+            unsettled = sum(
+                1 for value in grouped.values()
+                if value.get("type") not in (None, "in_agreement")
+            )
+            summaries.append({
+                "uuid": node.uuid,
+                "title": node.data.get("title", ""),
+                "unsettled_count": unsettled,
+                "order": order.get(node.uuid, 0),
+            })
+        summaries.sort(key=lambda item: (item["order"], item["title"]))
+        return summaries
+
+    def _agreement_order(self) -> dict:
+        order = self._metadata().setdefault("agreement_order", {})
+        if not isinstance(order, dict):
+            order = {}
+            self._metadata()["agreement_order"] = order
+        return order
+
+    def reorder_agreements(self, agreement_uuids: list[str]) -> SessionResult:
+        agreement = self._agreement()
+        if agreement is None:
+            return SessionResult("error", reason="Agreement application is not active")
+        valid = {node.uuid for node in agreement.agreements()}
+        order = self._agreement_order()
+        for position, uuid in enumerate(
+            uuid for uuid in agreement_uuids if uuid in valid
+        ):
+            order[uuid] = position
+        return SessionResult("ok", value=agreement_uuids)
+
     def summary_payload(self) -> dict:
         metadata = self._metadata()
         kanban = self._kanban()
         channel_manager = self.channel_manager
+        # Which topic-creating applications this host can offer in the
+        # "+ Add new" menu - the cockpit itself creates neither, it only
+        # routes to whichever facade is present.
+        creatable = [{"application_id": KANBAN_APPLICATION_ID, "label": "Board"}]
+        if self._agreement() is not None:
+            creatable.append(
+                {"application_id": AGREEMENT_APPLICATION_ID, "label": "Agreement"}
+            )
         if kanban is None:
             return {
                 "boards": [],
+                "agreements": self._agreement_summaries(),
+                "creatable": creatable,
                 "people": [],
                 "users": [],
                 "channel_targets": (
@@ -120,6 +185,8 @@ class BoardOfBoardsLogic:
                 board["channel_target_id"] = channel_manager.target_for_topic(board["uuid"])
         return {
             "boards": boards_out,
+            "agreements": self._agreement_summaries(),
+            "creatable": creatable,
             # Every peer this session knows about, for the card-edit modal's
             # owner/members picker - not board-scoped (unlike kanban.html's
             # picker, which restricts to current board peers) since Overview
