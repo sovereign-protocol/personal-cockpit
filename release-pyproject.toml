@@ -10,7 +10,22 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE", "LICENSES/*"]
+keywords = ["local-first", "collaboration", "sovereign-protocol"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.14",
+  "Operating System :: Microsoft :: Windows",
+]
 dependencies = ["sovereign-protocol>=0.1.0,<0.2"]
+
+# A package whose argument is auditability must say where its source is.
+[project.urls]
+Homepage = "https://github.com/sovereign-protocol/personal-cockpit"
+Source = "https://github.com/sovereign-protocol/personal-cockpit"
+Issues = "https://github.com/sovereign-protocol/personal-cockpit/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "s-kanban>=0.1.0a1,<0.2"]
