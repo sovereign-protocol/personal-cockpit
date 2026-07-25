@@ -49,6 +49,7 @@
         <h2 id="boardSettingsTitle">Board settings</h2>
         <div id="boardSettingsFields"></div>
         <menu>
+          <button type="button" id="deleteBoardSettingsBtn" class="danger">Delete board</button>
           <button type="button" id="cancelBoardSettingsBtn">Cancel</button>
           <button type="button" id="saveBoardSettingsBtn" class="primary">Save</button>
         </menu>
@@ -676,6 +677,11 @@
         next.onchange = () => {
           if (next.value && next.value === active.value) active.value = "";
         };
+        const remove = el("deleteBoardSettingsBtn");
+        remove.disabled = (state.boards || []).length <= 1;
+        remove.title = remove.disabled
+          ? "Create another board before deleting this one."
+          : "";
         el("boardSettingsModal").showModal();
       }
 
@@ -700,6 +706,23 @@
       }
 
       el("cancelBoardSettingsBtn").onclick = () => el("boardSettingsModal").close();
+      el("deleteBoardSettingsBtn").onclick = () => {
+        const board = settingsBoard;
+        if (!board) return;
+        confirmAction(
+          "Delete this board?",
+          "This removes the board and all of its cards. This cannot be undone.",
+          () => {
+            el("boardSettingsModal").close();
+            return run(
+              () => api("/api/kanban/boards/delete", {
+                board_uuid: board.uuid,
+              }),
+              "Board deleted",
+            );
+          },
+        );
+      };
       el("saveBoardSettingsBtn").onclick = () => {
         const board = settingsBoard;
         el("boardSettingsModal").close();
@@ -928,18 +951,6 @@
         SovereignShell.openConnectionPanel({
           topicUuid: board.uuid,
           targetId: board.channel_target_id || "",
-          extras: [{
-            label: "Stop discussing this board",
-            className: "danger",
-            onClick: () => confirmAction(
-              "Stop discussing this board?",
-              "This stops discussing it with everyone currently on it. The board itself is not deleted.",
-              () => run(
-                () => api("/api/kanban/boards/unshare", { board_uuid: board.uuid }),
-                "Stopped discussing this board",
-              ),
-            ),
-          }],
         });
       }
 
