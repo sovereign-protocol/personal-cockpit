@@ -772,5 +772,11 @@ button,
 
 /* Agreement tiles: the same footprint as a collapsed board, but simpler -
    no expand control, no bands, just title, move controls, and status. */
-.bob-agreement-tile .bob-board-title { font-weight: 600; }
+.bob-agreement-tile .bob-board-title {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  max-width: 100%;
+  width: fit-content;
+  font-weight: 600;
+}
 .bob-status.bob-status-divergence { color: #f87171; font-weight: 600; }
