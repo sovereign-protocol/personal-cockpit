@@ -89,6 +89,18 @@
       let modalLocalDraft = null;
       let modalReadOnlyPerspective = false;
       let settingsBoard = null;
+      const AUTO_ADOPT_LABELS = {
+        always: "Always",
+        not_owner: "Except cards I own",
+        not_member: "Except cards I'm on",
+        never: "Never",
+      };
+      const AUTO_ADOPT_DESCRIPTIONS = {
+        always: "Peer changes are automatically adopted into every card.",
+        not_owner: "Peer changes are automatically adopted, except on cards you own.",
+        not_member: "Peer changes are automatically adopted, except on cards you're a member of.",
+        never: "Peer changes wait for you to review and adopt them.",
+      };
       const el = (id) => document.getElementById(id);
 
       async function api(path, body) {
@@ -129,6 +141,8 @@
           empty.className = "bob-empty";
           empty.textContent = "Nothing yet - use “+ Add new”.";
           container.append(empty);
+          renderSelectedTopic();
+          SovereignShell.refresh();
           return;
         }
         const expanded = expandedBoards();
@@ -155,11 +169,47 @@
           );
           container.append(lane);
         });
+        renderSelectedTopic();
+        SovereignShell.refresh();
+      }
+
+      function renderSelectedTopic() {
+        const topic = state.selected_topic;
+        if (!topic) {
+          SovereignShell.setTopicRegion(null);
+          return;
+        }
+        const link = document.createElement("a");
+        link.className = "shell-topic-name";
+        link.textContent = topic.title;
+        link.href = topic.application_id === "agreement"
+          ? `/apps/agreement?agreement=${encodeURIComponent(topic.uuid)}`
+          : `/apps/kanban?board=${encodeURIComponent(topic.uuid)}`;
+        SovereignShell.setTopicRegion(link);
+      }
+
+      function selectTopic(topic) {
+        if (state.selected_topic?.uuid === topic.uuid) return;
+        run(
+          () => api("/api/personal-cockpit/topics/select", {
+            topic_uuid: topic.uuid,
+          }),
+          `${topic.title || topic.name} selected`,
+        );
+      }
+
+      function makeTopicSelectable(element, topic) {
+        if (topic.selected_topic) element.classList.add("selected-topic");
+        element.onclick = (event) => {
+          if (event.target.closest("a, button, input, select, textarea")) return;
+          selectTopic(topic);
+        };
       }
 
       function renderAgreementTile(agreement, index, total) {
         const tile = document.createElement("section");
         tile.className = "bob-board collapsed bob-agreement-tile";
+        makeTopicSelectable(tile, agreement);
         const header = document.createElement("div");
         header.className = "bob-board-header";
         const main = document.createElement("div");
@@ -202,6 +252,7 @@
       function renderExpandedBoard(board, index, total) {
         const panel = document.createElement("section");
         panel.className = "bob-board expanded";
+        makeTopicSelectable(panel, board);
         panel.append(boardHeader(board, true, index, total));
         panel.append(renderBand("Active", board, board.active_cards));
         panel.append(renderBand("Next", board, board.next_cards));
@@ -211,6 +262,7 @@
       function renderCollapsedBoard(board, index, total) {
         const tile = document.createElement("section");
         tile.className = "bob-board collapsed";
+        makeTopicSelectable(tile, board);
         tile.append(boardHeader(board, false, index, total));
         return tile;
       }
@@ -866,7 +918,36 @@
       SovereignShell.mount({
         container: el("shell"),
         applicationId: "personal-cockpit",
+        topicUuid: () => state?.selected_topic?.uuid || "",
         state: () => state || {},
+        agendaRoutes: () => {
+          const app = state?.selected_topic?.application_id;
+          if (app === "agreement") {
+            return {
+              topicKey: "agreement_uuid",
+              create: "/api/agreement/agenda/create",
+              delete: "/api/agreement/agenda/delete",
+              setPriority: "/api/agreement/agenda/set_priority",
+            };
+          }
+          if (app === "kanban") {
+            return {
+              topicKey: "board_uuid",
+              create: "/api/kanban/agenda/create",
+              delete: "/api/kanban/agenda/delete",
+              setPriority: "/api/kanban/agenda/set_priority",
+              move: "/api/kanban/agenda/move",
+            };
+          }
+          return null;
+        },
+        autoAdoptRoute: () => (
+          state?.selected_topic?.application_id === "kanban"
+            ? {path: "/api/kanban/auto_adopt", topicKey: "board_uuid"}
+            : null
+        ),
+        autoAdoptLabels: AUTO_ADOPT_LABELS,
+        autoAdoptDescriptions: AUTO_ADOPT_DESCRIPTIONS,
         onChanged: () => load(),
       });
       SovereignShell.setAppActions(addNew);
@@ -948,10 +1029,13 @@
 
       // The token itself is plain JSON assembled server-side (only the
       async function openShareModal(board) {
-        SovereignShell.openConnectionPanel({
-          topicUuid: board.uuid,
-          targetId: board.channel_target_id || "",
-        });
+        if (state.selected_topic?.uuid !== board.uuid) {
+          await api("/api/personal-cockpit/topics/select", {
+            topic_uuid: board.uuid,
+          });
+          await load();
+        }
+        await SovereignShell.openConnectionPanel();
       }
 
       async function openShareModalFromUrl() {

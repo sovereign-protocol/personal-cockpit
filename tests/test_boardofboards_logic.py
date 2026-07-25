@@ -4,6 +4,7 @@ from pathlib import Path
 
 import app_server
 from personal_cockpit.logic import BoardOfBoardsLogic
+from s_kanban.facade import KanbanFacade
 from s_kanban.logic import KanbanLogic
 from sovereign.protocol import ProtocolNode
 
@@ -22,7 +23,7 @@ def cockpit(runtime):
     return BoardOfBoardsLogic(
         runtime.session,
         runtime.config,
-        facades=_FacadeLookup(runtime.logic),
+        facades=_FacadeLookup(KanbanFacade(runtime.logic)),
     )
 
 
@@ -432,6 +433,24 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
             bob.summary_payload()["boards"][0]["objective"],
             "Ship the thing",
         )
+
+    def test_selected_topic_drives_cockpit_collaboration_context(self):
+        runtime = self.runtime(8522)
+        kanban: KanbanLogic = runtime.logic
+        bob = cockpit(runtime)
+        first = kanban.ensure_board()
+        second_uuid = kanban.create_board("Second").value
+
+        initial = bob.summary_payload()
+        self.assertEqual(initial["selected_topic"]["uuid"], first.uuid)
+        self.assertIn("auto_adopt_mode", initial)
+
+        self.assertEqual(bob.select_topic(second_uuid).status, "ok")
+        selected = bob.summary_payload()
+        self.assertEqual(selected["selected_topic"]["uuid"], second_uuid)
+        self.assertTrue(next(
+            item for item in selected["boards"] if item["uuid"] == second_uuid
+        )["selected_topic"])
 
     @staticmethod
     def runtime(port: int):

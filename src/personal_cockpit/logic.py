@@ -54,10 +54,9 @@ class FacadeLookup(Protocol):
 
 class BoardOfBoardsLogic:
     def __init__(self, session: Session, config: dict | None = None,
-                 channel_manager=None, facades: FacadeLookup | None = None):
+                 facades: FacadeLookup | None = None):
         self.session = session
         self.config = config or {}
-        self.channel_manager = channel_manager
         self.facades = facades
         self._kanban_facade_error = ""
 
@@ -112,6 +111,7 @@ class BoardOfBoardsLogic:
             summaries.append({
                 "uuid": node.uuid,
                 "title": node.data.get("title", ""),
+                "application_id": AGREEMENT_APPLICATION_ID,
                 "unsettled_count": unsettled,
                 "order": order.get(node.uuid, 0),
             })
@@ -137,10 +137,63 @@ class BoardOfBoardsLogic:
             order[uuid] = position
         return SessionResult("ok", value=agreement_uuids)
 
+    def select_topic(self, topic_uuid: str) -> SessionResult:
+        valid = {
+            *(board.uuid for board in (self._kanban().boards() if self._kanban() else [])),
+            *(item["uuid"] for item in self._agreement_summaries()),
+        }
+        if topic_uuid not in valid:
+            return SessionResult("error", reason="topic not found")
+        self._metadata()["selected_topic_uuid"] = topic_uuid
+        return SessionResult("ok", value=topic_uuid)
+
+    def _selected_topic(self, boards: list[dict], agreements: list[dict]) -> dict | None:
+        topics = [
+            *(
+                {
+                    "uuid": board["uuid"],
+                    "title": board["name"],
+                    "application_id": KANBAN_APPLICATION_ID,
+                }
+                for board in boards
+            ),
+            *(
+                {
+                    "uuid": agreement["uuid"],
+                    "title": agreement["title"],
+                    "application_id": AGREEMENT_APPLICATION_ID,
+                }
+                for agreement in agreements
+            ),
+        ]
+        selected_uuid = self._metadata().get("selected_topic_uuid")
+        selected = next(
+            (item for item in topics if item["uuid"] == selected_uuid),
+            topics[0] if topics else None,
+        )
+        if selected:
+            self._metadata()["selected_topic_uuid"] = selected["uuid"]
+        return selected
+
+    def _collaboration_context(self, selected: dict | None) -> dict:
+        if not selected:
+            return {
+                "agenda_items": [],
+                "transition_events": [],
+                "transition_by_node": {},
+                "known_identities": self.session.known_identities(),
+                "identity_uuid": self.session.identity.uuid,
+            }
+        facade = (
+            self._kanban()
+            if selected["application_id"] == KANBAN_APPLICATION_ID
+            else self._agreement()
+        )
+        return facade.collaboration_context(selected["uuid"]) if facade else {}
+
     def summary_payload(self) -> dict:
         metadata = self._metadata()
         kanban = self._kanban()
-        channel_manager = self.channel_manager
         # Which topic-creating applications this host can offer in the
         # "+ Add new" menu - the cockpit itself creates neither, it only
         # routes to whichever facade is present.
@@ -149,16 +202,17 @@ class BoardOfBoardsLogic:
             creatable.append(
                 {"application_id": AGREEMENT_APPLICATION_ID, "label": "Agreement"}
             )
+        agreements = self._agreement_summaries()
         if kanban is None:
+            selected = self._selected_topic([], agreements)
             return {
                 "boards": [],
-                "agreements": self._agreement_summaries(),
+                "agreements": agreements,
                 "creatable": creatable,
                 "people": [],
                 "users": [],
-                "channel_targets": (
-                    channel_manager.list_targets() if channel_manager else []
-                ),
+                "selected_topic": selected,
+                **self._collaboration_context(selected),
                 "sources": {
                     KANBAN_APPLICATION_ID: {
                         "available": False,
@@ -180,12 +234,18 @@ class BoardOfBoardsLogic:
                 ),
             )
         ]
-        if channel_manager:
-            for board in boards_out:
-                board["channel_target_id"] = channel_manager.target_for_topic(board["uuid"])
+        selected = self._selected_topic(boards_out, agreements)
+        for board in boards_out:
+            board["selected_topic"] = bool(
+                selected and board["uuid"] == selected["uuid"]
+            )
+        for agreement in agreements:
+            agreement["selected_topic"] = bool(
+                selected and agreement["uuid"] == selected["uuid"]
+            )
         return {
             "boards": boards_out,
-            "agreements": self._agreement_summaries(),
+            "agreements": agreements,
             "creatable": creatable,
             # Every peer this session knows about, for the card-edit modal's
             # owner/members picker - not board-scoped (unlike kanban.html's
@@ -193,7 +253,8 @@ class BoardOfBoardsLogic:
             # spans every board and has no per-board peer topic to filter by.
             "people": list(self._people_by_uuid().values()),
             "users": kanban.users(),
-            "channel_targets": channel_manager.list_targets() if channel_manager else [],
+            "selected_topic": selected,
+            **self._collaboration_context(selected),
             "sources": {KANBAN_APPLICATION_ID: {"available": True}},
         }
 
@@ -249,6 +310,7 @@ class BoardOfBoardsLogic:
         next_cards.sort(key=lambda entry: entry["relevance"] != "owner")
         return {
             "uuid": board.uuid,
+            "application_id": KANBAN_APPLICATION_ID,
             "name": board.data.get("name", ""),
             "objective": board.data.get("objective", ""),
             "expanded": bool(settings.get("expanded", False)),

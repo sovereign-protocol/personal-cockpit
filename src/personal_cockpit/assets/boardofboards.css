@@ -753,6 +753,11 @@ button,
   border: 1px solid #30363d;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
 }
+
+.bob-board.selected-topic {
+  border-color: #2f6feb;
+  box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.18);
+}
 .bob-add-menu[hidden] { display: none; }
 .bob-add-menu button {
   text-align: left;

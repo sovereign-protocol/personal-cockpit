@@ -29,7 +29,6 @@ def create_application(services: ApplicationServices) -> ApplicationInstance:
     logic = BoardOfBoardsLogic(
         services.session,
         dict(services.settings),
-        services.channel_manager,
         services.facades,
     )
     return ApplicationInstance(
