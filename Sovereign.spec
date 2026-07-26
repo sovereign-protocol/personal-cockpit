@@ -65,6 +65,12 @@ exe = EXE(
     a.datas,
     [],
     name="Sovereign",
+    # Without this PyInstaller stamps its own default, which is why the build
+    # showed a diskette. The mark is the aggregator's four squares, generated
+    # from the same geometry the in-app header uses by tools/make_icon.py.
+    # On Windows the window and taskbar take their icon from the executable,
+    # so this covers the titlebar too.
+    icon="packaging/sovereign.ico",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

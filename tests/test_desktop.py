@@ -93,6 +93,35 @@ class SpecTests(unittest.TestCase):
         # frozen build starts and then has nothing to draw into.
         self.assertIn("webview", self._collected())
 
+    def test_the_executable_names_an_icon_that_exists(self):
+        # PyInstaller stamps its own default when icon= is absent, which is
+        # how the first build shipped a diskette. A path that no longer
+        # resolves fails the build rather than falling back, so the only
+        # silent regression left is deleting the line.
+        source = (ROOT / "Sovereign.spec").read_text(encoding="utf-8")
+        self.assertIn("icon=", source)
+
+        icon = ROOT / "packaging" / "sovereign.ico"
+        self.assertTrue(icon.is_file(), str(icon))
+        self.assertIn(str(icon.relative_to(ROOT)).replace("\\", "/"), source)
+
+    def test_the_icon_carries_the_sizes_windows_asks_for(self):
+        # One 256px frame looks right in Explorer and turns to mush in the
+        # taskbar, which resamples rather than picking a drawn-for-16 frame.
+        icon = ROOT / "packaging" / "sovereign.ico"
+        header = icon.read_bytes()[:6]
+        self.assertEqual(header[:4], b"\x00\x00\x01\x00", "not an ICO file")
+
+        count = int.from_bytes(header[4:6], "little")
+        self.assertGreaterEqual(count, 5, f"only {count} size(s) in the icon")
+
+        entries = icon.read_bytes()[6:6 + count * 16]
+        # Width 0 means 256 in the ICO directory format.
+        widths = {entries[i * 16] or 256 for i in range(count)}
+        self.assertIn(16, widths)
+        self.assertIn(32, widths)
+        self.assertIn(256, widths)
+
 
 if __name__ == "__main__":
     unittest.main()
