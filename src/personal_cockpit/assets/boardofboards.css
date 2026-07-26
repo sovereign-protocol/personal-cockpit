@@ -780,3 +780,129 @@ button,
   font-weight: 600;
 }
 .bob-status.bob-status-divergence { color: #f87171; font-weight: 600; }
+
+/* ---------------------------------------------------------------------------
+   Light theme.
+
+   This file is not tokenised: the dark palette above is written as literal
+   hex on each selector, because it began as the dark half of a
+   prefers-color-scheme pair. So light is expressed the same way - the same
+   selectors, restated under [data-theme="light"] - rather than by inventing
+   tokens underneath a working page and hoping nothing shifted.
+
+   That means the two palettes have to be edited together. Converting both to
+   shared tokens is the tidier end state and is worth doing, but as its own
+   change where the diff is only the refactor and any visual shift is obvious.
+   --------------------------------------------------------------------------- */
+:root[data-theme="light"] body {
+  background: #f4f5f7;
+  color: #1b1f23;
+  --muted: #57606a;
+}
+:root[data-theme="light"] .bob-topbar,
+:root[data-theme="light"] .bob-board {
+  background: #ffffff;
+  border-color: #dfe1e6;
+}
+:root[data-theme="light"] .bob-board-title,
+:root[data-theme="light"] .bob-card-name,
+:root[data-theme="light"] .bob-card-description {
+  color: #1b1f23;
+}
+:root[data-theme="light"] .bob-objective,
+:root[data-theme="light"] .bob-band h3,
+:root[data-theme="light"] .bob-band-sources,
+:root[data-theme="light"] .bob-card-people-empty {
+  color: #44494f;
+}
+:root[data-theme="light"] .bob-objective:empty::before {
+  color: #8c959f;
+}
+:root[data-theme="light"] .bob-objective:hover {
+  border-color: #dfe1e6;
+}
+:root[data-theme="light"] .bob-objective:focus {
+  border-color: var(--teal);
+  background: #ffffff;
+}
+:root[data-theme="light"] .bob-board-tools {
+  background: #f4f5f7;
+  border-color: #dfe1e6;
+}
+:root[data-theme="light"] .bob-card-list,
+:root[data-theme="light"] .bob-stat {
+  background: #f4f5f7;
+  border-color: #e3e5e8;
+  color: #1b1f23;
+}
+:root[data-theme="light"] .bob-card {
+  background: #ffffff;
+  border-color: #e3e5e8;
+}
+:root[data-theme="light"] .bob-adopt,
+:root[data-theme="light"] .bob-react {
+  background: #ffffff;
+  border-color: #dfe1e6;
+  color: #1b1f23;
+}
+:root[data-theme="light"] .reaction-menu {
+  background: #ffffff;
+  border-color: #dfe1e6;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+}
+:root[data-theme="light"] .reaction-menu-option {
+  color: #1b1f23;
+}
+:root[data-theme="light"] .reaction-menu-option:hover,
+:root[data-theme="light"] .reaction-menu-option:focus-visible {
+  background: #eaeef2;
+}
+/* Selection stays amber in both themes - it is a status, and U2 keeps status
+   colours meaning the same thing everywhere. Only the values are retuned for
+   contrast against a light card. */
+:root[data-theme="light"] .bob-card.selected {
+  background: #fff8dc;
+  border-color: #b8860b;
+}
+:root[data-theme="light"] .bob-relevance-divider {
+  border-color: #dfe1e6;
+}
+:root[data-theme="light"] dialog {
+  background: #ffffff;
+  color: #1b1f23;
+}
+:root[data-theme="light"] dialog input,
+:root[data-theme="light"] dialog textarea,
+:root[data-theme="light"] dialog select,
+:root[data-theme="light"] .bob-status-select {
+  background: #ffffff;
+  color: #1b1f23;
+  border-color: #dfe1e6;
+}
+:root[data-theme="light"] button,
+:root[data-theme="light"] .bob-small-btn,
+:root[data-theme="light"] .bob-move {
+  background: #f4f5f7;
+  border-color: #dfe1e6;
+  color: #1b1f23;
+}
+:root[data-theme="light"] .user-choice {
+  background: #ffffff;
+  border-color: #dfe1e6;
+  color: #1b1f23;
+}
+:root[data-theme="light"] .bob-add-menu {
+  background: #ffffff;
+  border: 1px solid #dfe1e6;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.15);
+}
+:root[data-theme="light"] .bob-add-menu button {
+  background: none;
+  color: #1b1f23;
+}
+:root[data-theme="light"] .bob-add-menu button:hover { background: rgba(0, 0, 0, 0.06); }
+:root[data-theme="light"] .bob-board.selected-topic {
+  border-color: #0969da;
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.18);
+}
+:root[data-theme="light"] .bob-status.bob-status-divergence { color: #cf222e; }
