@@ -52,7 +52,13 @@ class PackagingTests(unittest.TestCase):
         self.assertTrue(assets.joinpath("boardofboards.css").is_file())
 
     def test_package_sources_live_under_the_declared_src_root(self):
-        self.assertTrue(Path(personal_cockpit.__file__).is_relative_to(ROOT / "src"))
+        # Asserting where the imported module loaded from only holds for an
+        # editable install: CI installs a wheel, so __file__ points into
+        # site-packages. The invariant is this repository's layout - the
+        # source sits under src/, and no flat copy survives beside it for an
+        # import to pick up ahead of the installed package.
+        self.assertTrue((ROOT / "src" / "personal_cockpit" / "__init__.py").is_file())
+        self.assertFalse((ROOT / "personal_cockpit").exists())
 
     def test_distribution_has_no_kanban_dependency(self):
         # A5: S-Kanban is an optional, late-bound producer. The moment it
