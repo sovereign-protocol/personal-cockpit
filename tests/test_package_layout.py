@@ -104,13 +104,11 @@ class BoundaryTests(unittest.TestCase):
                         )
             self.assertEqual(violations, [], str(path))
 
-    def test_never_names_another_application_package(self):
+    def test_never_imports_another_application(self):
         # A5 makes S-Kanban an optional, late-bound producer. The Cockpit
-        # reaches it through Core's host by application id and never imports
-        # it, which is why it starts with reduced function when S-Kanban is
-        # absent. An import here - even a guarded one inside a function -
-        # would mean the source knows a specific producer by name, and the
-        # next edit is the one that stops guarding it.
+        # reaches it through Core's host by application id, which is why it
+        # starts with reduced function when S-Kanban is absent. An import -
+        # even a guarded one inside a function - binds the two at load time.
         for path in SOURCES:
             imports = imported_modules(path)
             self.assertFalse(any(
@@ -118,7 +116,31 @@ class BoundaryTests(unittest.TestCase):
                 for name in imports
                 for package in OTHER_APPLICATIONS
             ), str(path))
-            self.assertNotIn("s_kanban", path.read_text(encoding="utf-8"), str(path))
+
+    def test_only_the_desktop_entry_names_another_application(self):
+        # Naming a producer at all is a step towards depending on it, so the
+        # rule stays absolute everywhere it can. The desktop entry is the one
+        # exemption: a frozen build has to list the packages to collect, and
+        # the host mounts applications by module name. It earns the exemption
+        # by probing rather than importing - see the guard test below.
+        for path in SOURCES:
+            if path.name == "desktop.py":
+                continue
+            source = path.read_text(encoding="utf-8")
+            for package in OTHER_APPLICATIONS:
+                self.assertNotIn(package, source, str(path))
+
+    def test_the_desktop_entry_probes_for_producers_instead_of_importing_them(self):
+        source = (ROOT / "src" / "personal_cockpit" / "desktop.py").read_text(
+            encoding="utf-8",
+        )
+
+        # The whole exemption rests on this: presence is discovered, so an
+        # absent producer is skipped rather than raising at start-up.
+        self.assertIn("find_spec", source)
+        for package in OTHER_APPLICATIONS:
+            self.assertNotIn(f"import {package}", source)
+            self.assertNotIn(f"from {package}", source)
 
     def test_does_not_read_private_channel_services_from_config(self):
         for path in SOURCES:
