@@ -4,9 +4,20 @@ from pathlib import Path
 
 import app_server
 from personal_cockpit.logic import BoardOfBoardsLogic
-from s_kanban.facade import KanbanFacade
-from s_kanban.logic import KanbanLogic
+try:
+    from s_kanban.facade import KanbanFacade
+    from s_kanban.logic import KanbanLogic
+except ImportError:  # pragma: no cover - depends on what is installed
+    KanbanFacade = KanbanLogic = None
 from sovereign.protocol import ProtocolNode
+
+
+# A5: Personal Cockpit may depend on another application only optionally.
+# Its own suite must therefore run with S-Kanban absent, which is also the
+# only way CI can install it before S-Kanban exists on an index.
+requires_kanban = unittest.skipIf(
+    KanbanLogic is None, "S-Kanban is not installed",
+)
 
 
 class _FacadeLookup:
@@ -27,22 +38,8 @@ def cockpit(runtime):
     )
 
 
-class BoardOfBoardsLogicTests(unittest.TestCase):
-    def test_application_host_supplies_live_kanban_facade(self):
-        directory = tempfile.TemporaryDirectory()
-        config = app_server.load_config(None, "boardofboards")
-        config["storage_file"] = str(Path(directory.name) / "cockpit.json")
-        runtime = app_server.create_runtime(8498, config)
-        runtime._test_tmp = directory
-        kanban = runtime.host.instances["kanban"].logic
-        kanban.ensure_board()
-
-        self.assertEqual(runtime.host.primary_instance.manifest.application_id,
-                         "personal-cockpit")
-        self.assertEqual(len(runtime.logic.summary_payload()["boards"]), 1)
-        self.assertTrue(
-            runtime.logic.summary_payload()["sources"]["kanban"]["available"],
-        )
+class CockpitWithoutKanbanTests(unittest.TestCase):
+    """Runs whether or not S-Kanban is installed - that is the point."""
 
     def test_without_kanban_facade_is_empty_and_reports_source_unavailable(self):
         directory = tempfile.TemporaryDirectory()
@@ -63,6 +60,24 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertIn("not active", payload["sources"]["kanban"]["reason"])
         result = bob.reorder_boards([])
         self.assertEqual(result.status, "error")
+
+@requires_kanban
+class BoardOfBoardsLogicTests(unittest.TestCase):
+    def test_application_host_supplies_live_kanban_facade(self):
+        directory = tempfile.TemporaryDirectory()
+        config = app_server.load_config(None, "boardofboards")
+        config["storage_file"] = str(Path(directory.name) / "cockpit.json")
+        runtime = app_server.create_runtime(8498, config)
+        runtime._test_tmp = directory
+        kanban = runtime.host.instances["kanban"].logic
+        kanban.ensure_board()
+
+        self.assertEqual(runtime.host.primary_instance.manifest.application_id,
+                         "personal-cockpit")
+        self.assertEqual(len(runtime.logic.summary_payload()["boards"]), 1)
+        self.assertTrue(
+            runtime.logic.summary_payload()["sources"]["kanban"]["available"],
+        )
 
     def test_summary_lists_all_boards_collapsed_by_default(self):
         runtime = self.runtime(8501)
