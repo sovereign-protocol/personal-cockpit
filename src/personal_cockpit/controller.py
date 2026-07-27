@@ -53,6 +53,12 @@ def build_routes(logic, runtime, config: dict) -> list[Route]:
             runtime, logic.reorder_agreements(data.get("agreement_uuids", [])),
         )
 
+    async def api_agreement_settings(request: Request):
+        data = await request.json()
+        return await _json_result(runtime, logic.set_agreement_expanded(
+            data["agreement_uuid"], bool(data.get("expanded")),
+        ))
+
     async def api_select_topic(request: Request):
         data = await request.json()
         return await _json_result(
@@ -67,6 +73,8 @@ def build_routes(logic, runtime, config: dict) -> list[Route]:
         Route("/api/personal-cockpit/boards/unpick", api_unpick_board, methods=["POST"]),
         Route("/api/personal-cockpit/boards/reorder", api_reorder_boards, methods=["POST"]),
         Route("/api/personal-cockpit/agreements/reorder", api_reorder_agreements,
+              methods=["POST"]),
+        Route("/api/personal-cockpit/agreements/settings", api_agreement_settings,
               methods=["POST"]),
         Route("/api/personal-cockpit/topics/select", api_select_topic,
               methods=["POST"]),

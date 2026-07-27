@@ -56,6 +56,20 @@
       </div>
     </dialog>
 
+    <dialog id="agreementSettingsModal">
+      <div class="bob-manage">
+        <h2 id="agreementSettingsTitle">Agreement settings</h2>
+        <p class="bob-hint">
+          An agreement has nothing to map onto bands the way a board does, so
+          this is where deleting one lives.
+        </p>
+        <menu>
+          <button type="button" id="deleteAgreementBtn" class="danger">Delete agreement</button>
+          <button type="button" id="cancelAgreementSettingsBtn">Cancel</button>
+        </menu>
+      </div>
+    </dialog>
+
     <dialog id="newBoardModal">
       <form method="dialog" id="newBoardForm">
         <h2>New board</h2>
@@ -89,6 +103,7 @@
       let modalLocalDraft = null;
       let modalReadOnlyPerspective = false;
       let settingsBoard = null;
+      let settingsAgreement = null;
       const AUTO_ADOPT_LABELS = {
         always: "Always",
         not_owner: "Except cards I own",
@@ -150,6 +165,15 @@
         expanded.forEach((board, index) => {
           container.append(renderExpandedBoard(board, index, expanded.length));
         });
+        // An expanded agreement stands in the same row of full-height lanes
+        // as an expanded board; enlarging one means reading the whole
+        // document, which is the agreement's equivalent of opening a board.
+        const openAgreements = agreements.filter((entry) => entry.expanded);
+        openAgreements.forEach((agreement, index) => {
+          container.append(
+            renderExpandedAgreement(agreement, index, openAgreements.length),
+          );
+        });
         chunk(collapsed, 5).forEach((boards, chunkIndex) => {
           const lane = document.createElement("section");
           lane.className = "bob-collapsed-lane";
@@ -158,14 +182,14 @@
           );
           container.append(lane);
         });
-        // Agreements are simple movable tiles, never expandable - an
-        // agreement has no active/next bands to open. They share the
-        // collapsed lane's layout, in their own lane after the boards.
-        chunk(agreements, 5).forEach((group, chunkIndex) => {
+        const shutAgreements = agreements.filter((entry) => !entry.expanded);
+        chunk(shutAgreements, 5).forEach((group, chunkIndex) => {
           const lane = document.createElement("section");
           lane.className = "bob-collapsed-lane bob-agreement-lane";
           group.forEach((agreement, i) =>
-            lane.append(renderAgreementTile(agreement, chunkIndex * 5 + i, agreements.length)),
+            lane.append(renderAgreementTile(
+              agreement, chunkIndex * 5 + i, shutAgreements.length,
+            )),
           );
           container.append(lane);
         });
@@ -210,6 +234,23 @@
         const tile = document.createElement("section");
         tile.className = "bob-board collapsed bob-agreement-tile";
         makeTopicSelectable(tile, agreement);
+        tile.append(agreementHeader(agreement, index, total));
+        return tile;
+      }
+
+      function renderExpandedAgreement(agreement, index, total) {
+        const panel = document.createElement("section");
+        panel.className = "bob-board expanded bob-agreement-tile";
+        makeTopicSelectable(panel, agreement);
+        panel.append(agreementHeader(agreement, index, total));
+        panel.append(agreementDocument(agreement));
+        return panel;
+      }
+
+      // The same header a board gets: move, enlarge/collapse, share,
+      // settings, and the counts underneath. The two topic kinds differ in
+      // what enlarging shows, not in what a tile offers.
+      function agreementHeader(agreement, index, total) {
         const header = document.createElement("div");
         header.className = "bob-board-header";
         const main = document.createElement("div");
@@ -224,25 +265,77 @@
         tools.className = "bob-board-tools";
         const controls = document.createElement("div");
         controls.className = "bob-board-controls";
-        controls.append(moveButton("<", index === 0, () => moveAgreement(agreement.uuid, -1)));
-        controls.append(moveButton(">", index >= total - 1, () => moveAgreement(agreement.uuid, 1)));
-        const status = document.createElement("span");
-        status.className = "bob-status";
-        if (agreement.unsettled_count > 0) {
-          status.classList.add("bob-status-divergence");
-          status.textContent = `${agreement.unsettled_count} to resolve`;
+        controls.append(moveButton("<", index === 0, () => moveAgreement(agreement, -1)));
+        controls.append(moveButton(">", index >= total - 1, () => moveAgreement(agreement, 1)));
+        if (agreement.expanded) {
+          controls.append(iconButton(ICON_COLLAPSE, "Collapse",
+            () => setAgreementExpanded(agreement, false)));
         } else {
-          status.textContent = "In agreement";
+          controls.append(iconButton(ICON_EXPAND, "Enlarge",
+            () => setAgreementExpanded(agreement, true)));
         }
-        tools.append(controls, status);
+        controls.append(iconButton(ICON_SHARE, "Share", () => openShareModal(agreement)));
+        controls.append(iconButton(ICON_SETTINGS, "Settings",
+          () => openAgreementSettings(agreement)));
+        tools.append(controls, agreementStatus(agreement));
         header.append(tools);
-        tile.append(header);
-        return tile;
+        return header;
       }
 
-      function moveAgreement(uuid, direction) {
-        const order = (state.agreements || []).map((entry) => entry.uuid);
-        const index = order.indexOf(uuid);
+      function agreementStatus(agreement) {
+        const status = document.createElement("div");
+        status.className = "bob-board-status";
+        status.append(
+          divergenceItem(agreement.unsettled_count),
+          statItem(agreement.agenda_count, "agenda"),
+        );
+        return status;
+      }
+
+      function agreementDocument(agreement) {
+        // Read-only: the tile shows the agreement, the agreement application
+        // is where it is edited. The title above already links there.
+        const wrap = document.createElement("div");
+        wrap.className = "bob-agreement-document";
+        const sections = agreement.sections || [];
+        if (!sections.length) {
+          const empty = document.createElement("p");
+          empty.className = "bob-hint";
+          empty.textContent = "This agreement has no sections yet.";
+          wrap.append(empty);
+          return wrap;
+        }
+        for (const section of sections) {
+          const heading = document.createElement("h3");
+          heading.textContent = section.title || "Untitled section";
+          wrap.append(heading);
+          for (const clause of section.clauses || []) {
+            const line = document.createElement("p");
+            line.className = "bob-agreement-clause";
+            line.textContent = clause.text || "";
+            wrap.append(line);
+          }
+        }
+        return wrap;
+      }
+
+      function setAgreementExpanded(agreement, expanded) {
+        return run(
+          () => api("/api/personal-cockpit/agreements/settings", {
+            agreement_uuid: agreement.uuid,
+            expanded,
+          }),
+          expanded ? "Enlarged" : "Collapsed",
+        );
+      }
+
+      function moveAgreement(agreement, direction) {
+        // Ordering is per group, exactly as it is for boards: an agreement
+        // moves among the tiles it is actually shown beside.
+        const group = (state.agreements || [])
+          .filter((entry) => Boolean(entry.expanded) === Boolean(agreement.expanded));
+        const order = group.map((entry) => entry.uuid);
+        const index = order.indexOf(agreement.uuid);
         const swapWith = index + direction;
         if (swapWith < 0 || swapWith >= order.length) return;
         [order[index], order[swapWith]] = [order[swapWith], order[index]];
@@ -362,7 +455,8 @@
         const status = document.createElement("div");
         status.className = "bob-board-status";
         status.append(
-          statItem(board.discussion_count, "discussion"),
+          divergenceItem(board.discussion_count),
+          statItem(board.agenda_count, "agenda"),
           statItem(board.active_cards.length, "active"),
           statItem(board.next_cards.length, "next"),
         );
@@ -373,6 +467,14 @@
         const item = document.createElement("span");
         item.className = "bob-stat";
         item.textContent = `${value} ${label}`;
+        return item;
+      }
+
+      // The count both topic kinds lead with, and the only one that is
+      // coloured - an unresolved difference is the thing worth noticing.
+      function divergenceItem(count) {
+        const item = statItem(count || 0, count === 1 ? "divergence" : "divergences");
+        if (count > 0) item.classList.add("bob-stat-divergence");
         return item;
       }
 
@@ -729,12 +831,14 @@
         next.onchange = () => {
           if (next.value && next.value === active.value) active.value = "";
         };
-        const remove = el("deleteBoardSettingsBtn");
-        remove.disabled = (state.boards || []).length <= 1;
-        remove.title = remove.disabled
-          ? "Create another board before deleting this one."
-          : "";
         el("boardSettingsModal").showModal();
+      }
+
+      function openAgreementSettings(agreement) {
+        settingsAgreement = agreement;
+        el("agreementSettingsTitle").textContent =
+          agreement.title || "Untitled agreement";
+        el("agreementSettingsModal").showModal();
       }
 
       function selectField(id, text, columns, value) {
@@ -771,6 +875,26 @@
                 board_uuid: board.uuid,
               }),
               "Board deleted",
+            );
+          },
+        );
+      };
+      el("cancelAgreementSettingsBtn").onclick = () =>
+        el("agreementSettingsModal").close();
+      el("deleteAgreementBtn").onclick = () => {
+        const agreement = settingsAgreement;
+        if (!agreement) return;
+        confirmAction(
+          "Delete this agreement?",
+          "This removes the agreement and all of its sections and clauses, "
+          + "and stops sharing it. This cannot be undone.",
+          () => {
+            el("agreementSettingsModal").close();
+            return run(
+              () => api("/api/agreement/agreements/delete", {
+                agreement_uuid: agreement.uuid,
+              }),
+              "Agreement deleted",
             );
           },
         );
@@ -955,7 +1079,8 @@
       // "+ Add new" drops a menu of the topic-creating applications this host
       // actually has - the cockpit routes to each application's create flow
       // rather than creating anything itself. The board flow keeps its
-      // template modal; a new agreement is created and jumped to as a tile.
+      // template modal; a new agreement appears as a tile, and you stay here
+      // to keep adding, exactly as creating a board leaves you here.
       function openNewBoardModal() {
         el("newBoardName").value = "Kanban Board";
         const select = el("newBoardTemplate");
@@ -973,16 +1098,12 @@
         el("newBoardModal").showModal();
       }
 
-      async function createAgreement() {
-        try {
-          const result = await api("/api/agreement/agreements/create",
-            { title: "Untitled agreement" });
-          await load();
-          if (result.value) {
-            window.location.href =
-              `/apps/agreement?agreement=${encodeURIComponent(result.value)}`;
-          }
-        } catch (err) { showToast(err.message, true); }
+      function createAgreement() {
+        return run(
+          () => api("/api/agreement/agreements/create",
+            { title: "Untitled agreement" }),
+          "Agreement created",
+        );
       }
 
       function closeAddNewMenu() { el("addNewMenu").hidden = true; }
@@ -1027,11 +1148,13 @@
         }, "Board created");
       });
 
-      // The token itself is plain JSON assembled server-side (only the
-      async function openShareModal(board) {
-        if (state.selected_topic?.uuid !== board.uuid) {
+      // The shell's pane always shares the selected topic, so sharing any
+      // tile means selecting it first. Boards and agreements are both
+      // topics, so one function serves both.
+      async function openShareModal(topic) {
+        if (state.selected_topic?.uuid !== topic.uuid) {
           await api("/api/personal-cockpit/topics/select", {
-            topic_uuid: board.uuid,
+            topic_uuid: topic.uuid,
           });
           await load();
         }
@@ -1040,10 +1163,11 @@
 
       async function openShareModalFromUrl() {
         const params = new URLSearchParams(window.location.search);
-        const boardUuid = params.get("share");
-        if (!boardUuid) return;
-        const board = (state.boards || []).find((entry) => entry.uuid === boardUuid);
-        if (board) await openShareModal(board);
+        const topicUuid = params.get("share");
+        if (!topicUuid) return;
+        const topic = [...(state.boards || []), ...(state.agreements || [])]
+          .find((entry) => entry.uuid === topicUuid);
+        if (topic) await openShareModal(topic);
         params.delete("share");
         const query = params.toString();
         window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
