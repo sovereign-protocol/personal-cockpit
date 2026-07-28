@@ -92,6 +92,7 @@
       </menu>
     </dialog>
 
+    <script src="/shared-api.js"></script>
     <script src="/shared.js"></script>
     <script>
       let state = null;
@@ -118,18 +119,7 @@
       };
       const el = (id) => document.getElementById(id);
 
-      async function api(path, body) {
-        const response = await fetch(path, {
-          method: body === undefined ? "GET" : "POST",
-          headers: body === undefined ? {} : { "Content-Type": "application/json" },
-          body: body === undefined ? undefined : JSON.stringify(body),
-        });
-        const payload = await response.json();
-        if (!response.ok || payload.status === "error") {
-          throw new Error(payload.reason || "Request failed");
-        }
-        return payload;
-      }
+      const api = SovereignApi.request;
 
       async function run(action, successMessage) {
         try {
@@ -443,7 +433,7 @@
           const value = div.textContent.trim();
           div.title = value;
           run(
-            () => api("/api/kanban/boards/set_objective", { board_uuid: board.uuid, objective: value }),
+            () => api("/api/personal-cockpit/kanban/boards/set_objective", { board_uuid: board.uuid, objective: value }),
             "Objective updated",
           );
         };
@@ -554,7 +544,7 @@
             run(() => api("/api/personal-cockpit/cards/toggle_selected", { card_uuid: card.uuid }), "Updated");
             return;
           }
-          run(() => api("/api/kanban/cards/move", { card_uuid: card.uuid, column_uuid: value, index: 0 }), "Moved");
+          run(() => api("/api/personal-cockpit/kanban/cards/move", { card_uuid: card.uuid, column_uuid: value, index: 0 }), "Moved");
         };
         row.append(select);
         return row;
@@ -636,8 +626,8 @@
             const missing = [reaction.event.type, reaction.event.original_type]
               .includes("peer_missing_node");
             const endpoint = reaction.action === "rollback"
-              ? "/api/kanban/rollback"
-              : "/api/kanban/adopt";
+              ? "/api/personal-cockpit/kanban/rollback"
+              : "/api/personal-cockpit/kanban/adopt";
             await run(() => api(endpoint, {
               source_addr: reaction.event.peer_addr,
               node_uuid: card.uuid,
@@ -871,7 +861,7 @@
           () => {
             el("boardSettingsModal").close();
             return run(
-              () => api("/api/kanban/boards/delete", {
+              () => api("/api/personal-cockpit/kanban/boards/delete", {
                 board_uuid: board.uuid,
               }),
               "Board deleted",
@@ -891,7 +881,7 @@
           () => {
             el("agreementSettingsModal").close();
             return run(
-              () => api("/api/agreement/agreements/delete", {
+              () => api("/api/personal-cockpit/agreement/agreements/delete", {
                 agreement_uuid: agreement.uuid,
               }),
               "Agreement deleted",
@@ -1016,7 +1006,7 @@
         if (!card) return;
         confirmAction("Delete card?", "This removes the card from its board.", () => {
           el("cardModal").close();
-          return run(() => api("/api/kanban/cards/delete", { card_uuid: card.uuid }), "Card deleted");
+          return run(() => api("/api/personal-cockpit/kanban/cards/delete", { card_uuid: card.uuid }), "Card deleted");
         });
       };
       el("cardForm").addEventListener("submit", (event) => {
@@ -1026,7 +1016,7 @@
         el("cardModal").close();
         run(
           () =>
-            api("/api/kanban/cards/update", {
+            api("/api/personal-cockpit/kanban/cards/update", {
               card_uuid: card.uuid,
               name: el("cardName").value,
               description: el("cardDescription").value,
@@ -1049,25 +1039,25 @@
           if (app === "agreement") {
             return {
               topicKey: "agreement_uuid",
-              create: "/api/agreement/agenda/create",
-              delete: "/api/agreement/agenda/delete",
-              setPriority: "/api/agreement/agenda/set_priority",
+              create: "/api/personal-cockpit/agreement/agenda/create",
+              delete: "/api/personal-cockpit/agreement/agenda/delete",
+              setPriority: "/api/personal-cockpit/agreement/agenda/set_priority",
             };
           }
           if (app === "kanban") {
             return {
               topicKey: "board_uuid",
-              create: "/api/kanban/agenda/create",
-              delete: "/api/kanban/agenda/delete",
-              setPriority: "/api/kanban/agenda/set_priority",
-              move: "/api/kanban/agenda/move",
+              create: "/api/personal-cockpit/kanban/agenda/create",
+              delete: "/api/personal-cockpit/kanban/agenda/delete",
+              setPriority: "/api/personal-cockpit/kanban/agenda/set_priority",
+              move: "/api/personal-cockpit/kanban/agenda/move",
             };
           }
           return null;
         },
         autoAdoptRoute: () => (
           state?.selected_topic?.application_id === "kanban"
-            ? {path: "/api/kanban/auto_adopt", topicKey: "board_uuid"}
+            ? {path: "/api/personal-cockpit/kanban/auto_adopt", topicKey: "board_uuid"}
             : null
         ),
         autoAdoptLabels: AUTO_ADOPT_LABELS,
@@ -1100,7 +1090,7 @@
 
       function createAgreement() {
         return run(
-          () => api("/api/agreement/agreements/create",
+          () => api("/api/personal-cockpit/agreement/agreements/create",
             { title: "Untitled agreement" }),
           "Agreement created",
         );
@@ -1138,13 +1128,13 @@
         el("newBoardModal").close();
         run(async () => {
           if (templateUuid) {
-            const result = await api("/api/kanban/boards/copy", { board_uuid: templateUuid });
+            const result = await api("/api/personal-cockpit/kanban/boards/copy", { board_uuid: templateUuid });
             if (result.value) {
-              await api("/api/kanban/boards/rename", { board_uuid: result.value, name });
+              await api("/api/personal-cockpit/kanban/boards/rename", { board_uuid: result.value, name });
             }
             return result;
           }
-          return api("/api/kanban/boards/create", { name });
+          return api("/api/personal-cockpit/kanban/boards/create", { name });
         }, "Board created");
       });
 

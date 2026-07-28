@@ -2,6 +2,14 @@
 
 ## 0.1.0a1 - unreleased
 
+- All producer mutations now cross versioned Kanban/Agreement facades through
+  Personal Cockpit-owned controller routes; the UI no longer calls producer
+  HTTP namespaces.
+- Local portfolio state now uses its Session application metadata namespace.
+- Core retired the direct HTTP channel. No production change was needed here
+  - the Cockpit reads perspectives and never routed anything itself - and a
+  peer is now named by its publication identity (`relay:…`) rather than a URL
+  wherever one is shown.
 - **Fixed: boards off the right-hand edge could not be reached.** The board
   row was sized as `100vh` minus a guessed top-bar height, so it finished a
   scrollbar's width past the bottom of the window - taking its own horizontal

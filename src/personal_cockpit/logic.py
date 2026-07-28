@@ -6,10 +6,10 @@ Functionality:
   Expanded boards are shown first with their objective, an Active
   band (cards from columns mapped as "active" for that board) and a Next
   band (cards from columns mapped as "next"). Collapsed boards follow as
-  compact overview tiles. Card field edits and column
-  moves go through the existing kanban API directly (/api/kanban/cards/...)
-  - this module only owns per-board display settings, column band mappings,
-  and the summary-only "selected" flag (never part of the real board data).
+  compact overview tiles. Card edits, moves, and reactions go through the
+  versioned Kanban facade. This module owns its controller namespace,
+  per-board display settings, column band mappings, and the summary-only
+  "selected" flag (never part of the real board data).
 
   This is a personal overview, so each band is filtered to cards relevant
   to the local user only: cards they own come first, then cards they're a
@@ -18,16 +18,12 @@ Functionality:
 
 Contract:
   Local-only config/state lives in
-  session.app_metadata["apps"]["Board of Boards"]:
+  session.application_metadata("Board of Boards"):
     board_settings: {
       board_uuid: {expanded: bool, active_column_uuid, next_column_uuid, order}
     }
     selected_card_uuids: [card_uuid, ...]
-  Already persisted/restored by app_server.py's existing session metadata
-  save/load - no changes needed there.
-
-Offered API:
-  create_logic(session, config)
+  Persisted and restored through Session's metadata envelope.
 
 Used API:
   The optional, versioned Kanban application facade and session.Session.
@@ -586,9 +582,180 @@ class BoardOfBoardsLogic:
         metadata["selected_card_uuids"] = sorted(selected)
         return SessionResult("ok", value=is_selected)
 
+    def set_board_objective(
+        self, board_uuid: str, objective: str,
+    ) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.set_board_objective(board_uuid, objective)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def move_card(
+        self, card_uuid: str, column_uuid: str, index: int,
+    ) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.move_card(card_uuid, column_uuid, index)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def react_to_kanban_node(
+        self, source_addr: str, node_uuid: str, reaction: str,
+        absent: bool = False,
+    ) -> SessionResult:
+        kanban = self._kanban()
+        if not kanban:
+            return SessionResult("error", reason=self._kanban_facade_error)
+        if reaction == "rollback":
+            return kanban.rollback_peer_node(
+                source_addr, node_uuid, absent,
+            )
+        return kanban.accept_peer_node(source_addr, node_uuid, absent)
+
+    def delete_board(self, board_uuid: str) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.delete_board(board_uuid)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def delete_card(self, card_uuid: str) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.delete_card(card_uuid)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def update_card(
+        self, card_uuid: str, name: str, description: str = "",
+        participants: list[str] | None = None, owner: str | None = None,
+        expected_content_hash: str | None = None,
+    ) -> SessionResult:
+        kanban = self._kanban()
+        if not kanban:
+            return SessionResult("error", reason=self._kanban_facade_error)
+        return kanban.update_card(
+            card_uuid, name, description, list(participants or []), owner,
+            expected_content_hash,
+        )
+
+    def create_kanban_agenda_item(
+        self, board_uuid: str, text: str, priority: str | None = None,
+    ) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.create_agenda_item(text, priority, board_uuid)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def delete_kanban_agenda_item(self, item_uuid: str) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.delete_agenda_item(item_uuid)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def prioritize_kanban_agenda_item(
+        self, item_uuid: str, priority: str | None,
+    ) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.set_agenda_item_priority(item_uuid, priority)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def move_kanban_agenda_item(
+        self, item_uuid: str, index: int,
+    ) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.move_agenda_item(item_uuid, index)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def set_kanban_auto_adopt(
+        self, board_uuid: str, mode: str,
+    ) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.set_auto_adopt_mode(mode, board_uuid)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def create_board(self, name: str) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.create_board(name)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def copy_board(self, board_uuid: str) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.copy_board(board_uuid)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def rename_board(self, board_uuid: str, name: str) -> SessionResult:
+        kanban = self._kanban()
+        return (
+            kanban.rename_board(board_uuid, name)
+            if kanban else SessionResult("error", reason=self._kanban_facade_error)
+        )
+
+    def create_agreement(self, title: str) -> SessionResult:
+        agreement = self._agreement()
+        return (
+            agreement.create_agreement(title)
+            if agreement else SessionResult(
+                "error", reason="Agreement application is not active",
+            )
+        )
+
+    def delete_agreement(self, agreement_uuid: str) -> SessionResult:
+        agreement = self._agreement()
+        return (
+            agreement.delete_agreement(agreement_uuid)
+            if agreement else SessionResult(
+                "error", reason="Agreement application is not active",
+            )
+        )
+
+    def create_agreement_agenda_item(
+        self, agreement_uuid: str, text: str,
+        priority: str | None = None,
+    ) -> SessionResult:
+        agreement = self._agreement()
+        return (
+            agreement.create_agenda_item(agreement_uuid, text, priority)
+            if agreement else SessionResult(
+                "error", reason="Agreement application is not active",
+            )
+        )
+
+    def delete_agreement_agenda_item(self, item_uuid: str) -> SessionResult:
+        agreement = self._agreement()
+        return (
+            agreement.delete_agenda_item(item_uuid)
+            if agreement else SessionResult(
+                "error", reason="Agreement application is not active",
+            )
+        )
+
+    def prioritize_agreement_agenda_item(
+        self, item_uuid: str, priority: str | None,
+    ) -> SessionResult:
+        agreement = self._agreement()
+        return (
+            agreement.set_agenda_item_priority(item_uuid, priority)
+            if agreement else SessionResult(
+                "error", reason="Agreement application is not active",
+            )
+        )
+
     def _metadata(self) -> dict:
-        apps = self.session.app_metadata.setdefault("apps", {})
-        return apps.setdefault(APP_METADATA_KEY, {})
+        return self.session.application_metadata(APP_METADATA_KEY)
 
     def _normalized_settings(self, boards: list[ProtocolNode]) -> dict[str, dict]:
         metadata = self._metadata()
@@ -627,7 +794,3 @@ class BoardOfBoardsLogic:
             if isinstance(item, dict)
         ]
         return (max(orders) + 1) if orders else 0
-
-
-def create_logic(session: Session, config: dict) -> BoardOfBoardsLogic:
-    return BoardOfBoardsLogic(session, config)

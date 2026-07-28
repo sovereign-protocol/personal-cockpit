@@ -297,16 +297,16 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         my_id = kanban.user_profile().uuid
         card = kanban.create_card(doing.uuid, "Discuss me", "", [my_id], owner=my_id).value
         bob.pick_board(board.uuid, [doing.uuid], [])
-        runtime.session.add_peer("http://peer", board.uuid)
+        runtime.session.note_indirect_peer_topic("relay:peer", board.uuid)
         runtime.session.apply_peer_subtree(
-            "http://peer",
+            "relay:peer",
             ProtocolNode.from_dict(runtime.session.protocol.index[board.uuid].to_dict()),
             runtime.session.protocol.root.uuid,
         )
 
         kanban.update_card(card.uuid, "Discuss me locally", "", [my_id], owner=my_id)
         runtime.session.record_peer_observations(
-            "http://peer",
+            "relay:peer",
             runtime.session.node_revision_map(runtime.session.protocol.index[board.uuid]),
         )
 
@@ -315,10 +315,10 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertEqual(summary["column_count"], 3)
         transition = summary["active_cards"][0]["transition"]
         self.assertEqual(transition["type"], "divergence")
-        self.assertEqual(transition["peer_addr"], "http://peer")
+        self.assertEqual(transition["peer_addr"], "relay:peer")
         perspectives = summary["active_cards"][0]["perspectives"]
         self.assertEqual(len(perspectives), 1)
-        self.assertEqual(perspectives[0]["peer_addr"], "http://peer")
+        self.assertEqual(perspectives[0]["peer_addr"], "relay:peer")
         self.assertFalse(perspectives[0]["absent"])
         self.assertEqual(perspectives[0]["name"], "Discuss me")
         self.assertEqual(perspectives[0]["column_name"], "Doing")
