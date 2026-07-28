@@ -100,23 +100,49 @@ class BoardOfBoardsLogic:
         if agreement is None:
             return []
         order = self._agreement_order()
+        nodes = agreement.agreements()
+        expanded_uuids = self._agreement_expanded()
+        live = {node.uuid for node in nodes}
+        expanded_uuids[:] = [uuid for uuid in expanded_uuids if uuid in live]
         summaries = []
-        for node in agreement.agreements():
+        for node in nodes:
             events = agreement.transition_events(node.uuid)
             grouped = agreement.transition_by_node(events)
             unsettled = sum(
                 1 for value in grouped.values()
                 if value.get("type") not in (None, "in_agreement")
             )
+            expanded = node.uuid in expanded_uuids
             summaries.append({
                 "uuid": node.uuid,
                 "title": node.data.get("title", ""),
                 "application_id": AGREEMENT_APPLICATION_ID,
                 "unsettled_count": unsettled,
+                "agenda_count": len(self.session.agenda_items(node.uuid)),
+                "expanded": expanded,
+                # The whole document, but only for the tile that is showing
+                # it - every summary carries this on a 1.5s poll otherwise.
+                "sections": (
+                    self._agreement_sections(agreement, node) if expanded else []
+                ),
                 "order": order.get(node.uuid, 0),
             })
         summaries.sort(key=lambda item: (item["order"], item["title"]))
         return summaries
+
+    @staticmethod
+    def _agreement_sections(facade, agreement: ProtocolNode) -> list[dict]:
+        return [
+            {
+                "uuid": section.uuid,
+                "title": section.data.get("title", ""),
+                "clauses": [
+                    {"uuid": clause.uuid, "text": clause.data.get("text", "")}
+                    for clause in facade.clauses(section)
+                ],
+            }
+            for section in facade.sections(agreement)
+        ]
 
     def _agreement_order(self) -> dict:
         order = self._metadata().setdefault("agreement_order", {})
@@ -124,6 +150,27 @@ class BoardOfBoardsLogic:
             order = {}
             self._metadata()["agreement_order"] = order
         return order
+
+    def _agreement_expanded(self) -> list:
+        expanded = self._metadata().setdefault("expanded_agreement_uuids", [])
+        if not isinstance(expanded, list):
+            expanded = []
+            self._metadata()["expanded_agreement_uuids"] = expanded
+        return expanded
+
+    def set_agreement_expanded(self, agreement_uuid: str,
+                               expanded: bool) -> SessionResult:
+        agreement = self._agreement()
+        if agreement is None:
+            return SessionResult("error", reason="Agreement application is not active")
+        if agreement_uuid not in {node.uuid for node in agreement.agreements()}:
+            return SessionResult("error", reason="agreement not found")
+        current = self._agreement_expanded()
+        if expanded and agreement_uuid not in current:
+            current.append(agreement_uuid)
+        elif not expanded and agreement_uuid in current:
+            current.remove(agreement_uuid)
+        return SessionResult("ok", value=agreement_uuid)
 
     def reorder_agreements(self, agreement_uuids: list[str]) -> SessionResult:
         agreement = self._agreement()
@@ -317,6 +364,7 @@ class BoardOfBoardsLogic:
             "order": int(settings.get("order", 0) or 0),
             "card_count": card_count,
             "discussion_count": discussion_count,
+            "agenda_count": len(self.session.agenda_items(board.uuid)),
             "column_count": len(columns),
             "columns": [
                 {"uuid": column.uuid, "name": column.data.get("name", "")}

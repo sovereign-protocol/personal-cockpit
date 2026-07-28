@@ -21,20 +21,96 @@ requires_kanban = unittest.skipIf(
 
 
 class _FacadeLookup:
-    def __init__(self, kanban):
+    def __init__(self, kanban, agreement=None):
         self.kanban = kanban
+        self.agreement = agreement
 
     def find(self, application_id, facade_api_version):
         if application_id == "kanban" and facade_api_version == 1:
             return self.kanban
+        if application_id == "agreement" and facade_api_version == 1:
+            return self.agreement
         return None
 
 
-def cockpit(runtime):
+class _StubAgreementFacade:
+    """S-Agreement's facade, over nodes this test makes itself.
+
+    The Cockpit consumes an interface, not a package - S-Agreement is as
+    optional as S-Kanban (A5) - so the Cockpit's own summaries are tested
+    against the interface. That the real application implements it is
+    S-Agreement's test to make.
+    """
+
+    def __init__(self, session):
+        self.session = session
+        self.uuids = []
+
+    def create(self, title):
+        node = self.session.create_child(
+            self.session.root_uuid(), {"type": "agreement", "title": title}, {},
+        ).value
+        self.uuids.append(node.uuid)
+        return node.uuid
+
+    def add_section(self, agreement_uuid, title, order=0):
+        return self.session.create_child(
+            agreement_uuid,
+            {"type": "agreement_section", "title": title, "order": order},
+            {},
+        ).value.uuid
+
+    def add_clause(self, section_uuid, text, order=0):
+        return self.session.create_child(
+            section_uuid,
+            {"type": "agreement_clause", "text": text, "order": order},
+            {},
+        ).value.uuid
+
+    def agreements(self):
+        nodes = [self.session.protocol.index.get(uuid) for uuid in self.uuids]
+        return [node for node in nodes if node and not node.deleted]
+
+    def sections(self, agreement):
+        return self._ordered(agreement, "agreement_section")
+
+    def clauses(self, section):
+        return self._ordered(section, "agreement_clause")
+
+    @staticmethod
+    def _ordered(parent, node_type):
+        return sorted(
+            [
+                child for child in parent.live_children()
+                if child.data.get("type") == node_type
+            ],
+            key=lambda node: (float(node.data.get("order", 0)), node.created_at),
+        )
+
+    def transition_events(self, agreement_uuid):
+        return []
+
+    def transition_by_node(self, events):
+        return {}
+
+    def collaboration_context(self, topic_uuid):
+        return {
+            "agenda_items": [
+                item.to_dict()
+                for item in self.session.agenda_items(topic_uuid)
+            ],
+            "transition_events": [],
+            "transition_by_node": {},
+            "identity_uuid": self.session.identity.uuid,
+            "known_identities": self.session.known_identities(),
+        }
+
+
+def cockpit(runtime, agreement=None):
     return BoardOfBoardsLogic(
         runtime.session,
         runtime.config,
-        facades=_FacadeLookup(KanbanFacade(runtime.logic)),
+        facades=_FacadeLookup(KanbanFacade(runtime.logic), agreement),
     )
 
 
@@ -466,6 +542,109 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertTrue(next(
             item for item in selected["boards"] if item["uuid"] == second_uuid
         )["selected_topic"])
+
+    def test_board_tile_counts_its_agenda_items(self):
+        # The tile shows divergences and agenda items side by side, so the
+        # agenda count has to be per board, not just for the selected one.
+        runtime = self.runtime(8523)
+        kanban: KanbanLogic = runtime.logic
+        bob = cockpit(runtime)
+        board = kanban.ensure_board()
+        other_uuid = kanban.create_board("Second").value
+        runtime.session.create_agenda_item(board.uuid, "Discuss scope")
+        runtime.session.create_agenda_item(board.uuid, "Discuss dates")
+
+        counts = {
+            item["uuid"]: item["agenda_count"]
+            for item in bob.summary_payload()["boards"]
+        }
+
+        self.assertEqual(counts[board.uuid], 2)
+        self.assertEqual(counts[other_uuid], 0)
+
+    def test_agreement_tile_reports_agenda_count_and_starts_collapsed(self):
+        runtime = self.runtime(8524)
+        agreement = _StubAgreementFacade(runtime.session)
+        bob = cockpit(runtime, agreement)
+        agreement_uuid = agreement.create("Working agreement")
+        runtime.session.create_agenda_item(agreement_uuid, "Revisit quorum")
+
+        summary = bob.summary_payload()["agreements"][0]
+
+        self.assertEqual(summary["uuid"], agreement_uuid)
+        self.assertEqual(summary["agenda_count"], 1)
+        self.assertFalse(summary["expanded"])
+        self.assertEqual(summary["sections"], [])
+
+    def test_enlarging_an_agreement_carries_its_whole_document(self):
+        runtime = self.runtime(8525)
+        agreement = _StubAgreementFacade(runtime.session)
+        bob = cockpit(runtime, agreement)
+        agreement_uuid = agreement.create("Working agreement")
+        first = agreement.add_section(agreement_uuid, "Purpose", order=0)
+        agreement.add_clause(first, "We decide by consent.", order=0)
+        agreement.add_clause(first, "Anyone may add an item.", order=1)
+        agreement.add_section(agreement_uuid, "Scope", order=1)
+
+        self.assertEqual(
+            bob.set_agreement_expanded(agreement_uuid, True).status, "ok",
+        )
+        summary = bob.summary_payload()["agreements"][0]
+
+        self.assertTrue(summary["expanded"])
+        self.assertEqual(
+            [section["title"] for section in summary["sections"]],
+            ["Purpose", "Scope"],
+        )
+        self.assertEqual(
+            [clause["text"] for clause in summary["sections"][0]["clauses"]],
+            ["We decide by consent.", "Anyone may add an item."],
+        )
+
+    def test_collapsing_an_agreement_drops_the_document_again(self):
+        runtime = self.runtime(8526)
+        agreement = _StubAgreementFacade(runtime.session)
+        bob = cockpit(runtime, agreement)
+        agreement_uuid = agreement.create("Working agreement")
+        agreement.add_section(agreement_uuid, "Purpose")
+        bob.set_agreement_expanded(agreement_uuid, True)
+
+        bob.set_agreement_expanded(agreement_uuid, False)
+        summary = bob.summary_payload()["agreements"][0]
+
+        self.assertFalse(summary["expanded"])
+        self.assertEqual(summary["sections"], [])
+
+    def test_expansion_is_forgotten_when_the_agreement_goes_away(self):
+        runtime = self.runtime(8527)
+        agreement = _StubAgreementFacade(runtime.session)
+        bob = cockpit(runtime, agreement)
+        agreement_uuid = agreement.create("Working agreement")
+        bob.set_agreement_expanded(agreement_uuid, True)
+
+        runtime.session.delete(agreement_uuid)
+        bob.summary_payload()
+
+        self.assertEqual(
+            bob._metadata()["expanded_agreement_uuids"], [],
+        )
+
+    def test_set_agreement_expanded_rejects_an_unknown_agreement(self):
+        runtime = self.runtime(8528)
+        bob = cockpit(runtime, _StubAgreementFacade(runtime.session))
+
+        result = bob.set_agreement_expanded("no-such-uuid", True)
+
+        self.assertEqual(result.status, "error")
+
+    def test_agreement_expansion_needs_the_agreement_application(self):
+        runtime = self.runtime(8529)
+        bob = cockpit(runtime)
+
+        result = bob.set_agreement_expanded("any-uuid", True)
+
+        self.assertEqual(result.status, "error")
+        self.assertIn("not active", result.reason)
 
     @staticmethod
     def runtime(port: int):

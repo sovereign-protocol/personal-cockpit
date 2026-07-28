@@ -7,14 +7,22 @@
   box-sizing: border-box;
 }
 
+/* The page is exactly one viewport tall and never scrolls itself: the bar
+   takes what it needs and the board area takes the rest. Sizing the board
+   area from 100vh minus a guessed bar height instead pushed it a scrollbar's
+   worth past the bottom of the window, which is where its own horizontal
+   scrollbar then sat - out of sight, so boards off the right-hand edge could
+   not be reached at all. */
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: #f4f5f7;
   color: #1b1f23;
   --bob-lane-width: 560px;
-  --bob-topbar-height: 3.6rem;
   --muted: #57606a;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
 
 .bob-topbar {
@@ -24,8 +32,7 @@ body {
   padding: 0.75rem 1.25rem;
   background: #ffffff;
   border-bottom: 1px solid #dfe1e6;
-  position: sticky;
-  top: 0;
+  flex: 0 0 auto;
   z-index: 5;
 }
 
@@ -100,9 +107,10 @@ dialog.relay-target-dialog {
   display: flex;
   gap: 1rem;
   padding: 1.25rem;
-  align-items: flex-start;
-  overflow-x: auto;
-  min-height: calc(100vh - var(--bob-topbar-height));
+  align-items: stretch;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .bob-collapsed-lane {
@@ -131,12 +139,17 @@ dialog.relay-target-dialog {
 .bob-board.expanded {
   width: var(--bob-lane-width);
   flex: 0 0 var(--bob-lane-width);
-  min-height: calc(100vh - var(--bob-topbar-height) - 2.5rem);
 }
 
 .bob-board.collapsed {
   width: 100%;
   flex: 0 0 auto;
+}
+
+/* A lane is stretched to the full height by the row, but its tiles are not:
+   they stack from the top and keep their own heights. */
+.bob-collapsed-lane > .bob-board {
+  align-self: flex-start;
 }
 
 .bob-board-header {
@@ -197,11 +210,15 @@ dialog.relay-target-dialog {
   justify-content: flex-end;
 }
 
+/* The counts are capped rather than left to grow, so a board's four never
+   push the title out of its own tile; past the cap the row wraps instead. */
 .bob-board-status {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 0.25rem;
   justify-content: flex-end;
+  max-width: 20rem;
   white-space: nowrap;
 }
 
@@ -290,6 +307,11 @@ dialog.relay-target-dialog {
   color: #24292f;
   font-weight: 650;
   text-align: center;
+}
+
+.bob-stat.bob-stat-divergence {
+  color: #cf222e;
+  border-color: #cf222e;
 }
 
 .bob-band h3 {
@@ -654,6 +676,10 @@ body {
   border-color: #21262d;
   color: #f0f6fc;
 }
+.bob-stat.bob-stat-divergence {
+  color: #f87171;
+  border-color: #f87171;
+}
 .bob-card {
   background: #161b22;
   border-color: #21262d;
@@ -770,8 +796,8 @@ button,
 }
 .bob-add-menu button:hover { background: rgba(255, 255, 255, 0.08); }
 
-/* Agreement tiles: the same footprint as a collapsed board, but simpler -
-   no expand control, no bands, just title, move controls, and status. */
+/* Agreement tiles carry the same header as a board tile. What differs is
+   what enlarging shows: a board opens its bands, an agreement its text. */
 .bob-agreement-tile .bob-board-title {
   align-self: flex-start;
   flex: 0 0 auto;
@@ -779,7 +805,33 @@ button,
   width: fit-content;
   font-weight: 600;
 }
-.bob-status.bob-status-divergence { color: #f87171; font-weight: 600; }
+
+.bob-agreement-document {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  background: #0d1117;
+  padding: 0.6rem 0.75rem;
+}
+
+.bob-agreement-document h3 {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.9rem;
+  color: #c9d1d9;
+}
+
+.bob-agreement-document h3:first-child {
+  margin-top: 0;
+}
+
+.bob-agreement-clause {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #f0f6fc;
+}
 
 /* ---------------------------------------------------------------------------
    Light theme.
@@ -905,4 +957,17 @@ button,
   border-color: #0969da;
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.18);
 }
-:root[data-theme="light"] .bob-status.bob-status-divergence { color: #cf222e; }
+:root[data-theme="light"] .bob-stat.bob-stat-divergence {
+  color: #cf222e;
+  border-color: #cf222e;
+}
+:root[data-theme="light"] .bob-agreement-document {
+  background: #fafbfc;
+  border-color: #eaecef;
+}
+:root[data-theme="light"] .bob-agreement-document h3 {
+  color: #57606a;
+}
+:root[data-theme="light"] .bob-agreement-clause {
+  color: #1b1f23;
+}
