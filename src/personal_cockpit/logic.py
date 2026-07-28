@@ -754,6 +754,17 @@ class BoardOfBoardsLogic:
             )
         )
 
+    def move_agreement_agenda_item(
+        self, item_uuid: str, index: int,
+    ) -> SessionResult:
+        agreement = self._agreement()
+        return (
+            agreement.move_agenda_item(item_uuid, index)
+            if agreement else SessionResult(
+                "error", reason="Agreement application is not active",
+            )
+        )
+
     def _metadata(self) -> dict:
         return self.session.application_metadata(APP_METADATA_KEY)
 

@@ -105,6 +105,20 @@ class _StubAgreementFacade:
             "known_identities": self.session.known_identities(),
         }
 
+    def create_agenda_item(self, agreement_uuid, text, priority=None):
+        return self.session.create_agenda_item(
+            agreement_uuid, text, priority,
+        )
+
+    def delete_agenda_item(self, item_uuid):
+        return self.session.delete_agenda_item(item_uuid)
+
+    def set_agenda_item_priority(self, item_uuid, priority):
+        return self.session.set_agenda_item_priority(item_uuid, priority)
+
+    def move_agenda_item(self, item_uuid, index):
+        return self.session.move_agenda_item(item_uuid, index)
+
 
 def cockpit(runtime, agreement=None):
     return BoardOfBoardsLogic(
@@ -575,6 +589,26 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertEqual(summary["agenda_count"], 1)
         self.assertFalse(summary["expanded"])
         self.assertEqual(summary["sections"], [])
+
+    def test_agreement_agenda_items_can_be_reordered_through_the_facade(self):
+        runtime = self.runtime(8530)
+        agreement = _StubAgreementFacade(runtime.session)
+        bob = cockpit(runtime, agreement)
+        agreement_uuid = agreement.create("Working agreement")
+        first = agreement.create_agenda_item(
+            agreement_uuid, "First topic",
+        ).value
+        second = agreement.create_agenda_item(
+            agreement_uuid, "Second topic",
+        ).value
+
+        result = bob.move_agreement_agenda_item(second.uuid, 0)
+
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(
+            [item.uuid for item in runtime.session.agenda_items(agreement_uuid)],
+            [second.uuid, first.uuid],
+        )
 
     def test_enlarging_an_agreement_carries_its_whole_document(self):
         runtime = self.runtime(8525)

@@ -2,6 +2,8 @@
 
 ## 0.1.0a1 - unreleased
 
+- Agreement agenda items can now be reordered from the Cockpit, using the same
+  drag interaction as Kanban agenda items.
 - All producer mutations now cross versioned Kanban/Agreement facades through
   Personal Cockpit-owned controller routes; the UI no longer calls producer
   HTTP namespaces.
