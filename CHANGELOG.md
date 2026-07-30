@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0a1 - unreleased
+## 0.1.0a2 - 2026-07-30
 
 - Add GitHub Actions builds for Apple Silicon and Intel macOS application
   bundles, including the native icon and bundle metadata.
