@@ -13,10 +13,8 @@ installed from their own clones:
     pip install pyinstaller
     pyinstaller Sovereign.spec
 
-This is deliberately not a CI job. Neither S-Kanban nor S-Agreement resolves
-from an index yet, so a runner cannot build it; S-Kanban's own repository
-keeps a single-application spec that CI does exercise, which is what stops
-the spec format rotting.
+The macOS CI job checks out the application repositories beside this one and
+installs them from source before running this spec.
 
 Licensing. Every Sovereign application is Apache-2.0, so combining them
 crosses no boundary. `sovereign` is LGPL-3.0-or-later, so passing this
@@ -24,6 +22,8 @@ executable to anyone else carries that licence's notice and relinking
 obligations. Building it for yourself is not distribution and carries none
 of that.
 """
+import sys
+
 from PyInstaller.utils.hooks import collect_all
 
 datas = []
@@ -58,6 +58,12 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+icon = (
+    "packaging/sovereign.icns"
+    if sys.platform == "darwin"
+    else "packaging/sovereign.ico"
+)
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -65,12 +71,10 @@ exe = EXE(
     a.datas,
     [],
     name="Sovereign",
-    # Without this PyInstaller stamps its own default, which is why the build
-    # showed a diskette. The mark is the aggregator's four squares, generated
-    # from the same geometry the in-app header uses by tools/make_icon.py.
-    # On Windows the window and taskbar take their icon from the executable,
-    # so this covers the titlebar too.
-    icon="packaging/sovereign.ico",
+    # Without this PyInstaller stamps its own default. Both platform formats
+    # use the aggregator's four squares, generated from the same geometry the
+    # in-app header uses by tools/make_icon.py.
+    icon=icon,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -85,3 +89,15 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
+
+if sys.platform == "darwin":
+    app = BUNDLE(
+        exe,
+        name="Sovereign.app",
+        icon="packaging/sovereign.icns",
+        bundle_identifier="org.sovereignprotocol.sovereign",
+        info_plist={
+            "CFBundleDisplayName": "Sovereign",
+            "NSHighResolutionCapable": True,
+        },
+    )

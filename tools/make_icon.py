@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Draw the application icon from the same geometry the in-app header uses.
+"""Draw the application icons from the same geometry the in-app header uses.
 
 The manifest's icon is four rounded squares on a 24-unit grid - the
-"four quadrant button" DESIGN_UI_CONSISTENCY describes. This renders that to
-a multi-size .ico for the frozen executable, so the window, taskbar and file
-listing show the same mark the aggregator shows inside the application.
+"four quadrant button" DESIGN_UI_CONSISTENCY describes. This renders Windows
+and macOS icon files for the frozen applications, so the window, taskbar and
+file listing show the same mark the aggregator shows inside the application.
 
 Development only. Pillow is not a dependency of this package; the generated
 icon is committed, so nobody needs this to build.
@@ -23,7 +23,9 @@ from PIL import Image, ImageDraw
 # Not src/personal_cockpit/assets/, which is packaged and served to the
 # browser. This one is consumed by PyInstaller at build time and ships inside
 # the executable rather than beside it.
-OUTPUT = Path(__file__).resolve().parents[1] / "packaging" / "sovereign.ico"
+OUTPUT_DIR = Path(__file__).resolve().parents[1] / "packaging"
+WINDOWS_OUTPUT = OUTPUT_DIR / "sovereign.ico"
+MACOS_OUTPUT = OUTPUT_DIR / "sovereign.icns"
 
 # Straight from personal_cockpit.application.APPLICATION_MANIFEST.icon: four
 # 7x7 squares with radius 1, at these origins on a 24-unit viewBox.
@@ -34,7 +36,8 @@ ORIGINS = ((3, 3), (14, 3), (3, 14), (14, 14))
 
 TILE = "#161b22"       # shell chrome, so the icon sits on the app's own surface
 MARK = "#3fb99b"       # --teal lifted for legibility against the tile
-SIZES = (16, 24, 32, 48, 64, 128, 256)
+WINDOWS_SIZES = (16, 24, 32, 48, 64, 128, 256)
+MACOS_SIZES = (32, 64, 128, 256, 512, 1024)
 
 # Draw large and downsample: rounded corners at 16px are jagged otherwise.
 SUPERSAMPLE = 8
@@ -63,11 +66,25 @@ def render(size: int) -> Image.Image:
 
 
 def main() -> int:
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    frames = [render(size) for size in SIZES]
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    windows_frames = [render(size) for size in WINDOWS_SIZES]
     # Pillow writes every requested size into one .ico from the largest frame.
-    frames[-1].save(OUTPUT, format="ICO", sizes=[(s, s) for s in SIZES])
-    print(f"wrote {OUTPUT} ({OUTPUT.stat().st_size} bytes, {len(SIZES)} sizes)")
+    windows_frames[-1].save(
+        WINDOWS_OUTPUT,
+        format="ICO",
+        sizes=[(size, size) for size in WINDOWS_SIZES],
+    )
+
+    macos_frames = [render(size) for size in MACOS_SIZES]
+    macos_frames[-1].save(
+        MACOS_OUTPUT,
+        format="ICNS",
+        append_images=macos_frames[:-1],
+    )
+
+    for output in (WINDOWS_OUTPUT, MACOS_OUTPUT):
+        print(f"wrote {output} ({output.stat().st_size} bytes)")
     return 0
 
 

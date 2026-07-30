@@ -38,10 +38,21 @@ so this still opens when one is absent.
 ```
 
 The result is `dist/Sovereign.exe` — the Cockpit, S-Kanban, S-Agreement and the
-Core they run on in a single window. It is not built in CI, because the other
-applications do not yet resolve from an index; S-Kanban's repository keeps a
-single-application spec that CI does exercise, which is what keeps the spec
-format honest.
+Core they run on in a single window.
+
+### Building for macOS without a Mac
+
+Open **Actions → Build macOS app → Run workflow** in this repository. The
+workflow checks out all four repositories and produces two downloadable ZIP
+artifacts:
+
+- `Sovereign-macOS-arm64` for Apple Silicon Macs
+- `Sovereign-macOS-x86_64` for Intel Macs
+
+It also runs automatically for tags beginning with `v`. Extract the matching
+ZIP on the Mac and open `Sovereign.app`. These builds are ad-hoc signed rather
+than Apple-notarized, so the first launch may require right-clicking the app and
+choosing **Open**.
 
 Building it for your own use carries no distribution obligations. Passing it to
 anyone else does: `sovereign` is LGPL-3.0-or-later, so its notices and relinking

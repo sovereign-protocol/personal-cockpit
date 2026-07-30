@@ -1,0 +1,100 @@
+name: Build macOS app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+
+    steps:
+      - name: Check out Personal Cockpit
+        uses: actions/checkout@v4
+        with:
+          path: personal-cockpit
+
+      - name: Check out Sovereign Core
+        uses: actions/checkout@v4
+        with:
+          repository: sovereign-protocol/core
+          path: core
+
+      - name: Check out S-Kanban
+        uses: actions/checkout@v4
+        with:
+          repository: sovereign-protocol/s-kanban
+          path: s-kanban
+
+      - name: Check out S-Agreement
+        uses: actions/checkout@v4
+        with:
+          repository: sovereign-protocol/s-agreement
+          path: s-agreement
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            personal-cockpit/pyproject.toml
+            core/pyproject.toml
+            s-kanban/pyproject.toml
+            s-agreement/pyproject.toml
+
+      - name: Install the complete suite and packager
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+          python -m pip install \
+            -e ./core \
+            -e ./s-kanban \
+            -e ./s-agreement \
+            -e "./personal-cockpit[desktop]"
+          python -m pip check
+
+      - name: Build the application bundle
+        working-directory: personal-cockpit
+        run: python -m PyInstaller --clean --noconfirm Sovereign.spec
+
+      - name: Verify the application bundle
+        working-directory: personal-cockpit
+        run: |
+          test -x dist/Sovereign.app/Contents/MacOS/Sovereign
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          file dist/Sovereign.app/Contents/MacOS/Sovereign
+          lipo -archs dist/Sovereign.app/Contents/MacOS/Sovereign \
+            | tr ' ' '\n' \
+            | grep -Fx "${{ matrix.arch }}"
+          plutil -lint dist/Sovereign.app/Contents/Info.plist
+          codesign --verify --deep --strict --verbose=2 dist/Sovereign.app
+
+      # Uploading the .app directory directly loses Unix executable bits.
+      - name: Package the application
+        working-directory: personal-cockpit
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/Sovereign.app \
+            "Sovereign-macOS-${{ matrix.arch }}.zip"
+
+      - name: Upload the application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sovereign-macOS-${{ matrix.arch }}
+          path: personal-cockpit/Sovereign-macOS-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 14

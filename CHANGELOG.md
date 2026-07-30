@@ -2,6 +2,8 @@
 
 ## 0.1.0a1 - unreleased
 
+- Add GitHub Actions builds for Apple Silicon and Intel macOS application
+  bundles, including the native icon and bundle metadata.
 - Require Sovereign Core 0.1.5 for composite responses and the optimistic
   Session view.
 - Active/Next bands now show every card in their mapped columns, with cards
