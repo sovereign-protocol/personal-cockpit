@@ -93,6 +93,7 @@
     </dialog>
 
     <script src="/shared-api.js"></script>
+    <script src="/shared-session.js"></script>
     <script src="/shared.js"></script>
     <script>
       let state = null;
@@ -117,25 +118,87 @@
         not_member: "Peer changes are automatically adopted, except on cards you're a member of.",
         never: "Peer changes wait for you to review and adopt them.",
       };
+      const APP_ICONS = {
+        kanban:
+          '<rect x="4" y="4" width="4" height="16" rx="1"></rect>'
+          + '<rect x="10" y="4" width="4" height="11" rx="1"></rect>'
+          + '<rect x="16" y="4" width="4" height="7" rx="1"></rect>',
+        agreement:
+          '<path d="M6 3h8l4 4v14H6z"></path>'
+          + '<path d="M14 3v4h4"></path><path d="M9 13h6"></path>'
+          + '<path d="M9 17h6"></path>',
+      };
       const el = (id) => document.getElementById(id);
 
       const api = SovereignApi.request;
-
-      async function run(action, successMessage) {
-        try {
-          await action();
-          await load();
-          showToast(successMessage);
-        } catch (err) {
-          showToast(err.message, true);
+      const sessionView = SovereignSessionView.create({request: api});
+      sessionView
+        .defineView("tiles", {
+          load: () => api("/api/personal-cockpit/tiles"),
+        })
+        .defineView("context", {
+          load: () => api("/api/personal-cockpit/context"),
+        });
+      sessionView.subscribe((nextState, _pending, event) => {
+        state = nextState;
+        if (!Array.isArray(state.boards)) return;
+        if (event.change === "state" || event.change === "tiles") {
+          render();
         }
+        if (event.change !== "pending") {
+          renderSelectedTopic();
+          SovereignShell.refresh();
+        }
+      });
+
+      function mutationRequest(context, path, body = {}, suffix = "") {
+        const mutationId = suffix
+          ? `${context.mutationId}:${suffix}`
+          : context.mutationId;
+        return api(path, {...body, mutation_id: mutationId}, {
+          signal: context.signal,
+        });
+      }
+
+      function run(action, successMessage) {
+        const promise = sessionView.mutate({
+          key: `action:${Date.now()}:${Math.random()}`,
+          command: "application-action",
+          action: (context) => action(
+            (path, body, suffix) =>
+              mutationRequest(context, path, body, suffix),
+          ),
+          invalidates: ["tiles", "context"],
+        });
+        promise
+          .then(() => showToast(successMessage))
+          .catch((error) => showToast(error.message, true));
+        return promise;
+      }
+
+      function submitMutation({
+        key, command, arguments: args, action, project, successMessage,
+      }) {
+        const promise = sessionView.mutate({
+          key,
+          command,
+          arguments: args,
+          project,
+          action: (context) => action(
+            (path, body, suffix) =>
+              mutationRequest(context, path, body, suffix),
+          ),
+          invalidates: ["tiles", "context"],
+        });
+        promise
+          .then(() => showToast(successMessage))
+          .catch((error) => showToast(error.message, true));
+        return promise;
       }
 
       async function load() {
-        state = await api("/api/personal-cockpit/summary");
-        render();
+        await sessionView.refresh(["tiles", "context"]);
       }
-
 
       function render() {
         const container = el("boards");
@@ -150,36 +213,29 @@
           SovereignShell.refresh();
           return;
         }
-        const expanded = expandedBoards();
-        const collapsed = collapsedBoards();
-        expanded.forEach((board, index) => {
-          container.append(renderExpandedBoard(board, index, expanded.length));
-        });
-        // An expanded agreement stands in the same row of full-height lanes
-        // as an expanded board; enlarging one means reading the whole
-        // document, which is the agreement's equivalent of opening a board.
-        const openAgreements = agreements.filter((entry) => entry.expanded);
-        openAgreements.forEach((agreement, index) => {
+        const tiles = tilesInDisplayOrder();
+        const expanded = tiles.filter((tile) => tile.expanded);
+        const collapsed = tiles.filter((tile) => !tile.expanded);
+        expanded.forEach((tile, index) => {
           container.append(
-            renderExpandedAgreement(agreement, index, openAgreements.length),
+            tile.application_id === "agreement"
+              ? renderExpandedAgreement(tile, index, expanded.length)
+              : renderExpandedBoard(tile, index, expanded.length),
           );
         });
-        chunk(collapsed, 5).forEach((boards, chunkIndex) => {
+        chunk(collapsed, 5).forEach((group, chunkIndex) => {
           const lane = document.createElement("section");
           lane.className = "bob-collapsed-lane";
-          boards.forEach((board, i) =>
-            lane.append(renderCollapsedBoard(board, chunkIndex * 5 + i, collapsed.length)),
-          );
-          container.append(lane);
-        });
-        const shutAgreements = agreements.filter((entry) => !entry.expanded);
-        chunk(shutAgreements, 5).forEach((group, chunkIndex) => {
-          const lane = document.createElement("section");
-          lane.className = "bob-collapsed-lane bob-agreement-lane";
-          group.forEach((agreement, i) =>
-            lane.append(renderAgreementTile(
-              agreement, chunkIndex * 5 + i, shutAgreements.length,
-            )),
+          group.forEach((tile, i) =>
+            lane.append(
+              tile.application_id === "agreement"
+                ? renderAgreementTile(
+                    tile, chunkIndex * 5 + i, collapsed.length,
+                  )
+                : renderCollapsedBoard(
+                    tile, chunkIndex * 5 + i, collapsed.length,
+                  ),
+            ),
           );
           container.append(lane);
         });
@@ -204,12 +260,32 @@
 
       function selectTopic(topic) {
         if (state.selected_topic?.uuid === topic.uuid) return;
-        run(
-          () => api("/api/personal-cockpit/topics/select", {
+        const selected = {
+          uuid: topic.uuid,
+          title: topic.title || topic.name || "",
+          application_id: topic.application_id,
+        };
+        return submitMutation({
+          key: "selected-topic",
+          command: "select-topic",
+          arguments: selected,
+          action: (request) => request("/api/personal-cockpit/topics/select", {
             topic_uuid: topic.uuid,
           }),
-          `${topic.title || topic.name} selected`,
-        );
+          successMessage: `${topic.title || topic.name} selected`,
+          project: (draft, nextTopic) => {
+            draft.selected_topic = nextTopic;
+            for (const entry of [
+              ...(draft.boards || []), ...(draft.agreements || []),
+            ]) {
+              entry.selected_topic = entry.uuid === nextTopic.uuid;
+            }
+            draft.agenda_items = [];
+            draft.transition_events = [];
+            draft.transition_by_node = {};
+            return draft;
+          },
+        });
       }
 
       function makeTopicSelectable(element, topic) {
@@ -218,6 +294,39 @@
           if (event.target.closest("a, button, input, select, textarea")) return;
           selectTopic(topic);
         };
+      }
+
+      function tilesInDisplayOrder() {
+        const order = new Map(
+          (state.tile_order || []).map((uuid, index) => [uuid, index]),
+        );
+        return [
+          ...(state.boards || []),
+          ...(state.agreements || []),
+        ].sort((left, right) =>
+          (order.get(left.uuid) ?? Number.MAX_SAFE_INTEGER)
+          - (order.get(right.uuid) ?? Number.MAX_SAFE_INTEGER)
+          || String(left.name || left.title || "").localeCompare(
+            String(right.name || right.title || ""),
+          ),
+        );
+      }
+
+      function topicTitle(applicationId, text, href) {
+        const title = document.createElement("a");
+        title.className = "bob-board-title";
+        title.href = href;
+        const icon = document.createElementNS(
+          "http://www.w3.org/2000/svg", "svg",
+        );
+        icon.setAttribute("viewBox", "0 0 24 24");
+        icon.setAttribute("aria-hidden", "true");
+        icon.classList.add("bob-topic-icon");
+        icon.innerHTML = APP_ICONS[applicationId] || "";
+        const label = document.createElement("span");
+        label.textContent = text;
+        title.append(icon, label);
+        return title;
       }
 
       function renderAgreementTile(agreement, index, total) {
@@ -245,18 +354,19 @@
         header.className = "bob-board-header";
         const main = document.createElement("div");
         main.className = "bob-board-main";
-        const title = document.createElement("a");
-        title.className = "bob-board-title";
-        title.href = `/apps/agreement?agreement=${encodeURIComponent(agreement.uuid)}`;
-        title.textContent = agreement.title || "Untitled agreement";
+        const title = topicTitle(
+          "agreement",
+          agreement.title || "Untitled agreement",
+          `/apps/agreement?agreement=${encodeURIComponent(agreement.uuid)}`,
+        );
         main.append(title);
         header.append(main);
         const tools = document.createElement("div");
         tools.className = "bob-board-tools";
         const controls = document.createElement("div");
         controls.className = "bob-board-controls";
-        controls.append(moveButton("<", index === 0, () => moveAgreement(agreement, -1)));
-        controls.append(moveButton(">", index >= total - 1, () => moveAgreement(agreement, 1)));
+        controls.append(moveButton("<", index === 0, () => moveTile(agreement, -1)));
+        controls.append(moveButton(">", index >= total - 1, () => moveTile(agreement, 1)));
         if (agreement.expanded) {
           controls.append(iconButton(ICON_COLLAPSE, "Collapse",
             () => setAgreementExpanded(agreement, false)));
@@ -291,7 +401,9 @@
         if (!sections.length) {
           const empty = document.createElement("p");
           empty.className = "bob-hint";
-          empty.textContent = "This agreement has no sections yet.";
+          empty.textContent = agreement.optimistic_loading
+            ? "Loading agreement..."
+            : "This agreement has no sections yet.";
           wrap.append(empty);
           return wrap;
         }
@@ -310,26 +422,58 @@
       }
 
       function setAgreementExpanded(agreement, expanded) {
-        return run(
-          () => api("/api/personal-cockpit/agreements/settings", {
+        return submitMutation({
+          key: `expanded:${agreement.uuid}`,
+          command: "set-agreement-expanded",
+          arguments: {uuid: agreement.uuid, expanded},
+          action: (request) => request(
+            "/api/personal-cockpit/agreements/settings", {
             agreement_uuid: agreement.uuid,
             expanded,
           }),
-          expanded ? "Enlarged" : "Collapsed",
-        );
+          successMessage: expanded ? "Enlarged" : "Collapsed",
+          project: (draft, change) => {
+            const target = (draft.agreements || [])
+              .find((entry) => entry.uuid === change.uuid);
+            if (target) {
+              target.expanded = change.expanded;
+              target.optimistic_loading = change.expanded
+                && !(target.sections || []).length;
+            }
+            return draft;
+          },
+        });
       }
 
-      function moveAgreement(agreement, direction) {
-        // Ordering is per group, exactly as it is for boards: an agreement
-        // moves among the tiles it is actually shown beside.
-        const group = (state.agreements || [])
-          .filter((entry) => Boolean(entry.expanded) === Boolean(agreement.expanded));
+      function moveTile(tile, direction) {
+        const tiles = tilesInDisplayOrder();
+        const group = tiles.filter(
+          (entry) => Boolean(entry.expanded) === Boolean(tile.expanded),
+        );
         const order = group.map((entry) => entry.uuid);
-        const index = order.indexOf(agreement.uuid);
+        const index = order.indexOf(tile.uuid);
         const swapWith = index + direction;
         if (swapWith < 0 || swapWith >= order.length) return;
         [order[index], order[swapWith]] = [order[swapWith], order[index]];
-        run(() => api("/api/personal-cockpit/agreements/reorder", { agreement_uuids: order }), "Reordered");
+        const other = tiles
+          .filter((entry) => Boolean(entry.expanded) !== Boolean(tile.expanded))
+          .map((entry) => entry.uuid);
+        const fullOrder = tile.expanded
+          ? [...order, ...other]
+          : [...other, ...order];
+        submitMutation({
+          key: "tile-order",
+          command: "reorder-tiles",
+          arguments: {tileOrder: fullOrder},
+          action: (request) => request("/api/personal-cockpit/tiles/reorder", {
+            tile_uuids: fullOrder,
+          }),
+          successMessage: "Reordered",
+          project: (draft, change) => {
+            draft.tile_order = [...change.tileOrder];
+            return draft;
+          },
+        });
       }
 
       function renderExpandedBoard(board, index, total) {
@@ -355,21 +499,19 @@
         header.className = "bob-board-header";
         const main = document.createElement("div");
         main.className = "bob-board-main";
-        const title = document.createElement("a");
-        title.className = "bob-board-title";
-        // Address Kanban by its own asset prefix, not "/". The root serves
-        // whichever application is primary, which is this one whenever the
-        // cockpit is running, so "/" navigated straight back here.
-        title.href = `/apps/kanban?board=${encodeURIComponent(board.uuid)}`;
-        title.textContent = board.name;
+        const title = topicTitle(
+          "kanban",
+          board.name,
+          `/apps/kanban?board=${encodeURIComponent(board.uuid)}`,
+        );
         main.append(title, objectiveElement(board));
         header.append(main);
         const tools = document.createElement("div");
         tools.className = "bob-board-tools";
         const controls = document.createElement("div");
         controls.className = "bob-board-controls";
-        controls.append(moveButton("<", index === 0, () => moveBoard(board.uuid, -1)));
-        controls.append(moveButton(">", index >= total - 1, () => moveBoard(board.uuid, 1)));
+        controls.append(moveButton("<", index === 0, () => moveTile(board, -1)));
+        controls.append(moveButton(">", index >= total - 1, () => moveTile(board, 1)));
         if (expanded) {
           controls.append(iconButton(ICON_COLLAPSE, "Collapse", () => setExpanded(board, false)));
         } else {
@@ -380,14 +522,6 @@
         tools.append(controls, boardStatus(board));
         header.append(tools);
         return header;
-      }
-
-      function expandedBoards() {
-        return (state.boards || []).filter((board) => board.expanded);
-      }
-
-      function collapsedBoards() {
-        return (state.boards || []).filter((board) => !board.expanded);
       }
 
       function chunk(items, size) {
@@ -433,7 +567,10 @@
           const value = div.textContent.trim();
           div.title = value;
           run(
-            () => api("/api/personal-cockpit/kanban/boards/set_objective", { board_uuid: board.uuid, objective: value }),
+            (request) => request(
+              "/api/personal-cockpit/kanban/boards/set_objective",
+              {board_uuid: board.uuid, objective: value},
+            ),
             "Objective updated",
           );
         };
@@ -447,8 +584,6 @@
         status.append(
           divergenceItem(board.discussion_count),
           statItem(board.agenda_count, "agenda"),
-          statItem(board.active_cards.length, "active"),
-          statItem(board.next_cards.length, "next"),
         );
         return status;
       }
@@ -474,10 +609,13 @@
         const heading = document.createElement("h3");
         const title = document.createElement("span");
         title.textContent = label;
+        const count = document.createElement("span");
+        count.className = "bob-band-count";
+        count.textContent = cards.length;
         const sources = document.createElement("span");
         sources.className = "bob-band-sources";
         sources.textContent = `(${bandColumnNames(board, label).join(", ") || "not set"})`;
-        heading.append(title, sources);
+        heading.append(title, count, sources);
         wrap.append(heading);
         const list = document.createElement("div");
         list.className = "bob-card-list";
@@ -541,10 +679,22 @@
         select.onchange = () => {
           const value = select.value;
           if (value === "__selected__") {
-            run(() => api("/api/personal-cockpit/cards/toggle_selected", { card_uuid: card.uuid }), "Updated");
+            run(
+              (request) => request(
+                "/api/personal-cockpit/cards/toggle_selected",
+                {card_uuid: card.uuid},
+              ),
+              "Updated",
+            );
             return;
           }
-          run(() => api("/api/personal-cockpit/kanban/cards/move", { card_uuid: card.uuid, column_uuid: value, index: 0 }), "Moved");
+          run(
+            (request) => request(
+              "/api/personal-cockpit/kanban/cards/move",
+              {card_uuid: card.uuid, column_uuid: value, index: 0},
+            ),
+            "Moved",
+          );
         };
         row.append(select);
         return row;
@@ -628,7 +778,7 @@
             const endpoint = reaction.action === "rollback"
               ? "/api/personal-cockpit/kanban/rollback"
               : "/api/personal-cockpit/kanban/adopt";
-            await run(() => api(endpoint, {
+            await run((request) => request(endpoint, {
               source_addr: reaction.event.peer_addr,
               node_uuid: card.uuid,
               adopt_absence: reaction.action === "adopt" && missing,
@@ -787,21 +937,22 @@
       }
 
       function setExpanded(board, expanded) {
-        return run(
-          () => api("/api/personal-cockpit/boards/settings", { board_uuid: board.uuid, expanded }),
-          expanded ? "Expanded" : "Collapsed",
-        );
-      }
-
-      function moveBoard(boardUuid, direction) {
-        const board = (state.boards || []).find((entry) => entry.uuid === boardUuid);
-        const group = board?.expanded ? expandedBoards() : collapsedBoards();
-        const order = group.map((entry) => entry.uuid);
-        const index = order.indexOf(boardUuid);
-        const swapWith = index + direction;
-        if (swapWith < 0 || swapWith >= order.length) return;
-        [order[index], order[swapWith]] = [order[swapWith], order[index]];
-        run(() => api("/api/personal-cockpit/boards/reorder", { board_uuids: order }), "Reordered");
+        return submitMutation({
+          key: `expanded:${board.uuid}`,
+          command: "set-board-expanded",
+          arguments: {uuid: board.uuid, expanded},
+          action: (request) => request(
+            "/api/personal-cockpit/boards/settings",
+            {board_uuid: board.uuid, expanded},
+          ),
+          successMessage: expanded ? "Expanded" : "Collapsed",
+          project: (draft, change) => {
+            const target = (draft.boards || [])
+              .find((entry) => entry.uuid === change.uuid);
+            if (target) target.expanded = change.expanded;
+            return draft;
+          },
+        });
       }
 
       function openBoardSettings(board) {
@@ -861,7 +1012,8 @@
           () => {
             el("boardSettingsModal").close();
             return run(
-              () => api("/api/personal-cockpit/kanban/boards/delete", {
+              (request) => request(
+                "/api/personal-cockpit/kanban/boards/delete", {
                 board_uuid: board.uuid,
               }),
               "Board deleted",
@@ -881,7 +1033,8 @@
           () => {
             el("agreementSettingsModal").close();
             return run(
-              () => api("/api/personal-cockpit/agreement/agreements/delete", {
+              (request) => request(
+                "/api/personal-cockpit/agreement/agreements/delete", {
                 agreement_uuid: agreement.uuid,
               }),
               "Agreement deleted",
@@ -893,8 +1046,8 @@
         const board = settingsBoard;
         el("boardSettingsModal").close();
         run(
-          () =>
-            api("/api/personal-cockpit/boards/settings", {
+          (request) =>
+            request("/api/personal-cockpit/boards/settings", {
               board_uuid: board.uuid,
               active_column_uuid: el("settingsActiveColumn").value,
               next_column_uuid: el("settingsNextColumn").value,
@@ -1006,7 +1159,13 @@
         if (!card) return;
         confirmAction("Delete card?", "This removes the card from its board.", () => {
           el("cardModal").close();
-          return run(() => api("/api/personal-cockpit/kanban/cards/delete", { card_uuid: card.uuid }), "Card deleted");
+          return run(
+            (request) => request(
+              "/api/personal-cockpit/kanban/cards/delete",
+              {card_uuid: card.uuid},
+            ),
+            "Card deleted",
+          );
         });
       };
       el("cardForm").addEventListener("submit", (event) => {
@@ -1015,8 +1174,8 @@
         const card = modalCard;
         el("cardModal").close();
         run(
-          () =>
-            api("/api/personal-cockpit/kanban/cards/update", {
+          (request) =>
+            request("/api/personal-cockpit/kanban/cards/update", {
               card_uuid: card.uuid,
               name: el("cardName").value,
               description: el("cardDescription").value,
@@ -1063,6 +1222,7 @@
         ),
         autoAdoptLabels: AUTO_ADOPT_LABELS,
         autoAdoptDescriptions: AUTO_ADOPT_DESCRIPTIONS,
+        sessionView,
         onChanged: () => load(),
       });
       SovereignShell.setAppActions(addNew);
@@ -1091,8 +1251,10 @@
 
       function createAgreement() {
         return run(
-          () => api("/api/personal-cockpit/agreement/agreements/create",
-            { title: "Untitled agreement" }),
+          (request) => request(
+            "/api/personal-cockpit/agreement/agreements/create",
+            {title: "Untitled agreement"},
+          ),
           "Agreement created",
         );
       }
@@ -1127,15 +1289,25 @@
         const name = el("newBoardName").value || "Kanban Board";
         const templateUuid = el("newBoardTemplate").value;
         el("newBoardModal").close();
-        run(async () => {
+        run(async (request) => {
           if (templateUuid) {
-            const result = await api("/api/personal-cockpit/kanban/boards/copy", { board_uuid: templateUuid });
+            const result = await request(
+              "/api/personal-cockpit/kanban/boards/copy",
+              {board_uuid: templateUuid},
+              "copy",
+            );
             if (result.value) {
-              await api("/api/personal-cockpit/kanban/boards/rename", { board_uuid: result.value, name });
+              await request(
+                "/api/personal-cockpit/kanban/boards/rename",
+                {board_uuid: result.value, name},
+                "rename",
+              );
             }
             return result;
           }
-          return api("/api/personal-cockpit/kanban/boards/create", { name });
+          return request(
+            "/api/personal-cockpit/kanban/boards/create", {name},
+          );
         }, "Board created");
       });
 
@@ -1144,10 +1316,7 @@
       // topics, so one function serves both.
       async function openShareModal(topic) {
         if (state.selected_topic?.uuid !== topic.uuid) {
-          await api("/api/personal-cockpit/topics/select", {
-            topic_uuid: topic.uuid,
-          });
-          await load();
+          await selectTopic(topic);
         }
         await SovereignShell.openConnectionPanel();
       }
@@ -1178,10 +1347,19 @@
         if (!active || !el("boards").contains(active)) return false;
         return active.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName);
       }
+      sessionView.startPolling({
+        views: ["tiles", "context"],
+        intervalMs: 1500,
+        when: () => !isEditingBoards(),
+      });
+      // Presence can age without changing application data. Refresh only the
+      // selected topic's collaboration fragment, never every tile.
       setInterval(() => {
-        if (isEditingBoards()) return;
-        load().catch((err) => showToast(err.message, true));
-      }, 1500);
+        if (!isEditingBoards()) {
+          sessionView.refresh("context")
+            .catch((error) => showToast(error.message, true));
+        }
+      }, 3000);
     </script>
   </body>
 </html>

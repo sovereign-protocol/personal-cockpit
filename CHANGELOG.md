@@ -2,6 +2,27 @@
 
 ## 0.1.0a1 - unreleased
 
+- Require Sovereign Core 0.1.5 for composite responses and the optimistic
+  Session view.
+- Active/Next bands now show every card in their mapped columns, with cards
+  involving the local user ordered first. The mapped column name is aligned
+  separately on the right.
+- **Fixed: saved Active/Next column choices no longer return to "(not set)".**
+  Legacy board bindings are migrated once instead of overwriting current
+  settings on every tile refresh, and confirmed settings now redraw
+  immediately instead of waiting for another tile interaction.
+- Standalone compatibility payload builders are observation-free while their
+  Session transaction is held; live liveness is merged only afterward.
+- Cockpit reads and mutations now open their own Session transaction
+  rather than relying on the HTTP layer to hold the lock, so board and
+  agreement settings stay correct when called from a facade or a test.
+- Cockpit selection, enlargement and tile ordering now use Core's shared
+  optimistic Session view. Confirmed snapshots stay separate from pending
+  intentions, timed-out mutations reconcile by ID without flipping back, and
+  tile data refreshes separately from collaboration details.
+- Boards and agreements now share one tile stream, with application icons;
+  enlarged tiles precede collapsed overview tiles. Active/next counts moved
+  from the board toolbar to their enlarged bands.
 - Agreement agenda items can now be reordered from the Cockpit, using the same
   drag interaction as Kanban agenda items.
 - All producer mutations now cross versioned Kanban/Agreement facades through

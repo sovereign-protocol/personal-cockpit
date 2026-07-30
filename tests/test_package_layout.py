@@ -60,6 +60,19 @@ class PackagingTests(unittest.TestCase):
         self.assertTrue((ROOT / "src" / "personal_cockpit" / "__init__.py").is_file())
         self.assertFalse((ROOT / "personal_cockpit").exists())
 
+    def test_live_context_does_not_nest_transport_under_session_snapshot(self):
+        controller = (
+            ROOT / "src" / "personal_cockpit" / "controller.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "_composite_response(runtime, logic, logic.tiles_snapshot)",
+            controller,
+        )
+        self.assertIn(
+            "_composite_response(runtime, logic, logic.context_snapshot)",
+            controller,
+        )
+
     def test_distribution_has_no_kanban_dependency(self):
         # A5: S-Kanban is an optional, late-bound producer. The moment it
         # appears in `dependencies`, installing the Cockpit drags it in and
@@ -219,6 +232,39 @@ class AssetTests(unittest.TestCase):
     def test_assets_do_not_call_producer_controller_namespaces(self):
         self.assertNotIn("/api/kanban", self.cockpit)
         self.assertNotIn("/api/agreement", self.cockpit)
+
+    def test_cockpit_renders_one_application_identified_tile_stream(self):
+        self.assertIn("tilesInDisplayOrder()", self.cockpit)
+        self.assertIn("APP_ICONS", self.cockpit)
+        self.assertIn("bob-topic-icon", self.cockpit)
+        self.assertIn("/api/personal-cockpit/tiles/reorder", self.cockpit)
+        self.assertNotIn("expandedBoards()", self.cockpit)
+        self.assertNotIn("collapsedBoards()", self.cockpit)
+
+    def test_active_and_next_counts_live_on_the_expanded_bands(self):
+        self.assertIn('count.className = "bob-band-count"', self.cockpit)
+        self.assertIn("heading.append(title, count, sources)", self.cockpit)
+        self.assertNotIn("involving you", self.cockpit)
+        status_start = self.cockpit.index("function boardStatus(board)")
+        status_end = self.cockpit.index("function statItem", status_start)
+        status_source = self.cockpit[status_start:status_end]
+        self.assertNotIn("active_cards", status_source)
+        self.assertNotIn("next_cards", status_source)
+
+    def test_cockpit_uses_the_shared_optimistic_session_view(self):
+        self.assertIn("/api/personal-cockpit/tiles", self.cockpit)
+        self.assertIn("/api/personal-cockpit/context", self.cockpit)
+        self.assertIn('<script src="/shared-session.js"></script>', self.cockpit)
+        self.assertIn("SovereignSessionView.create", self.cockpit)
+        self.assertIn("sessionView.mutate", self.cockpit)
+        self.assertIn("sessionView.startPolling", self.cockpit)
+        self.assertIn("mutation_id: mutationId", self.cockpit)
+        self.assertNotIn("queueMutation", self.cockpit)
+        self.assertNotIn("pendingMutations", self.cockpit)
+        self.assertNotIn("optimisticVersions", self.cockpit)
+        self.assertNotIn(
+            'api("/api/personal-cockpit/summary")', self.cockpit,
+        )
 
 
 if __name__ == "__main__":

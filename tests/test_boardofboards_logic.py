@@ -45,6 +45,7 @@ class _StubAgreementFacade:
     def __init__(self, session):
         self.session = session
         self.uuids = []
+        self.observed_networks = []
 
     def create(self, title):
         node = self.session.create_child(
@@ -87,13 +88,15 @@ class _StubAgreementFacade:
             key=lambda node: (float(node.data.get("order", 0)), node.created_at),
         )
 
-    def transition_events(self, agreement_uuid):
+    def transition_events(self, agreement_uuid, network=None):
+        self.observed_networks.append(network)
         return []
 
     def transition_by_node(self, events):
         return {}
 
-    def collaboration_context(self, topic_uuid):
+    def collaboration_context(self, topic_uuid, network=None):
+        self.observed_networks.append(network)
         return {
             "agenda_items": [
                 item.to_dict()
@@ -153,6 +156,20 @@ class CockpitWithoutKanbanTests(unittest.TestCase):
 
 @requires_kanban
 class BoardOfBoardsLogicTests(unittest.TestCase):
+    def test_compatibility_payload_uses_explicit_detached_observations(self):
+        runtime = self.runtime(8534)
+        agreement = _StubAgreementFacade(runtime.session)
+        bob = cockpit(runtime, agreement)
+        agreement_uuid = agreement.create("No nested transport")
+        bob.select_topic(agreement_uuid)
+
+        bob.summary_payload()
+
+        self.assertTrue(agreement.observed_networks)
+        self.assertTrue(all(
+            network == {} for network in agreement.observed_networks
+        ))
+
     def test_application_host_supplies_live_kanban_facade(self):
         directory = tempfile.TemporaryDirectory()
         config = app_server.load_config(None, "boardofboards")
@@ -185,6 +202,21 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         payload = bob.summary_payload()
         expanded = [item for item in payload["boards"] if item["expanded"]]
         self.assertEqual([b["uuid"] for b in expanded], [board_a.uuid])
+
+    def test_tiles_and_selected_collaboration_are_separate_payloads(self):
+        runtime = self.runtime(8532)
+        kanban: KanbanLogic = runtime.logic
+        bob = cockpit(runtime)
+        board = kanban.ensure_board()
+        runtime.session.create_agenda_item(board.uuid, "Discuss timing")
+
+        tiles = bob.tiles_payload()
+        context = bob.context_payload()
+
+        self.assertNotIn("agenda_items", tiles)
+        self.assertEqual(context["selected_topic"]["uuid"], board.uuid)
+        self.assertEqual(len(context["agenda_items"]), 1)
+        self.assertIn("agenda_items", bob.summary_payload())
 
     def test_summary_carries_columns_and_settings_for_each_board(self):
         runtime = self.runtime(8511)
@@ -230,7 +262,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertEqual([c["uuid"] for c in summary["active_cards"]], [active_card.uuid])
         self.assertEqual([c["uuid"] for c in summary["next_cards"]], [next_card.uuid])
 
-    def test_cards_without_owner_or_participant_are_excluded(self):
+    def test_active_band_includes_all_cards_with_personal_cards_first(self):
         runtime = self.runtime(8513)
         kanban: KanbanLogic = runtime.logic
         bob = cockpit(runtime)
@@ -239,13 +271,22 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         my_id = kanban.user_profile().uuid
 
         mine = kanban.create_card(doing.uuid, "Mine", "", [my_id]).value
-        kanban.create_card(doing.uuid, "Someone else's", "", ["other-user-id"])
-        kanban.create_card(doing.uuid, "Unassigned")
+        someone_elses = kanban.create_card(
+            doing.uuid, "Someone else's", "", ["other-user-id"],
+        ).value
+        unassigned = kanban.create_card(doing.uuid, "Unassigned").value
         bob.pick_board(board.uuid, [doing.uuid], [])
 
         summary = bob.summary_payload()["boards"][0]
 
-        self.assertEqual([c["uuid"] for c in summary["active_cards"]], [mine.uuid])
+        self.assertEqual(
+            [c["uuid"] for c in summary["active_cards"]],
+            [mine.uuid, someone_elses.uuid, unassigned.uuid],
+        )
+        self.assertEqual(
+            [c["relevance"] for c in summary["active_cards"]],
+            ["participant", "other", "other"],
+        )
 
     def test_owner_cards_sort_before_participant_cards(self):
         runtime = self.runtime(8514)
@@ -436,6 +477,37 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         collapsed_order = [b["uuid"] for b in payload["boards"] if not b["expanded"]]
         self.assertEqual(collapsed_order, [board_c_uuid, board_b_uuid])
 
+    def test_boards_and_agreements_share_one_tile_order(self):
+        runtime = self.runtime(8531)
+        kanban: KanbanLogic = runtime.logic
+        agreement = _StubAgreementFacade(runtime.session)
+        bob = cockpit(runtime, agreement)
+        board = kanban.ensure_board()
+        agreement_uuid = agreement.create("Working agreement")
+
+        initial = bob.summary_payload()
+        self.assertEqual(
+            set(initial["tile_order"]), {board.uuid, agreement_uuid},
+        )
+
+        result = bob.reorder_tiles([agreement_uuid, board.uuid])
+
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(
+            bob.summary_payload()["tile_order"],
+            [agreement_uuid, board.uuid],
+        )
+
+        duplicate = bob.reorder_tiles([
+            agreement_uuid, agreement_uuid, board.uuid,
+        ])
+        invalid = bob.reorder_tiles("not-a-list")
+
+        self.assertEqual(
+            duplicate.value, [agreement_uuid, board.uuid],
+        )
+        self.assertEqual(invalid.status, "error")
+
     def test_summary_drops_a_picked_board_that_no_longer_exists(self):
         runtime = self.runtime(8506)
         kanban: KanbanLogic = runtime.logic
@@ -515,6 +587,40 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertFalse(summary["expanded"])
         self.assertEqual(summary["active_column_uuid"], doing.uuid)
         self.assertEqual(summary["next_column_uuid"], todo.uuid)
+
+    def test_legacy_bindings_do_not_overwrite_new_column_settings(self):
+        runtime = self.runtime(8535)
+        kanban: KanbanLogic = runtime.logic
+        board = kanban.ensure_board()
+        todo, doing, _done = kanban.columns(board)
+        with runtime.session.lock:
+            metadata = runtime.session.application_metadata(
+                "personal-cockpit",
+            )
+            metadata["picked_boards"] = [board.uuid]
+            metadata["board_bindings"] = {
+                board.uuid: {
+                    "active_column_uuids": [],
+                    "next_column_uuids": [],
+                },
+            }
+        bob = cockpit(runtime)
+
+        bob.update_board_settings(
+            board.uuid,
+            active_column_uuid=doing.uuid,
+            next_column_uuid=todo.uuid,
+        )
+        summary = bob.summary_payload()["boards"][0]
+
+        self.assertEqual(summary["active_column_uuid"], doing.uuid)
+        self.assertEqual(summary["next_column_uuid"], todo.uuid)
+        with runtime.session.lock:
+            metadata = runtime.session.application_metadata(
+                "personal-cockpit",
+            )
+            self.assertNotIn("picked_boards", metadata)
+            self.assertNotIn("board_bindings", metadata)
 
     def test_toggle_selected_rejects_unknown_card(self):
         runtime = self.runtime(8509)
@@ -649,7 +755,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertFalse(summary["expanded"])
         self.assertEqual(summary["sections"], [])
 
-    def test_expansion_is_forgotten_when_the_agreement_goes_away(self):
+    def test_missing_agreement_is_ignored_without_mutating_during_a_read(self):
         runtime = self.runtime(8527)
         agreement = _StubAgreementFacade(runtime.session)
         bob = cockpit(runtime, agreement)
@@ -657,11 +763,13 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         bob.set_agreement_expanded(agreement_uuid, True)
 
         runtime.session.delete(agreement_uuid)
-        bob.summary_payload()
+        payload = bob.summary_payload()
 
-        self.assertEqual(
-            bob._metadata()["expanded_agreement_uuids"], [],
-        )
+        self.assertEqual(payload["agreements"], [])
+        with runtime.session.lock:
+            self.assertEqual(
+                bob._metadata()["expanded_agreement_uuids"], [agreement_uuid],
+            )
 
     def test_set_agreement_expanded_rejects_an_unknown_agreement(self):
         runtime = self.runtime(8528)

@@ -170,14 +170,16 @@ dialog.relay-target-dialog {
 }
 
 .bob-board-title {
+  align-items: center;
   border: 0;
   background: transparent;
   color: #0b1220;
   cursor: pointer;
-  display: block;
+  display: flex;
   flex: 1 1 auto;
   font-size: 1.08rem;
   font-weight: 800;
+  gap: 0.4rem;
   line-height: 1.2;
   min-width: 0;
   overflow: hidden;
@@ -186,6 +188,23 @@ dialog.relay-target-dialog {
   text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bob-board-title > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bob-topic-icon {
+  fill: none;
+  flex: 0 0 auto;
+  height: 1.05rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 1.05rem;
 }
 
 .bob-board-title:hover {
@@ -325,13 +344,28 @@ dialog.relay-target-dialog {
 }
 
 .bob-band-sources {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   font-weight: 500;
+  margin-left: auto;
   min-width: 0;
   overflow: hidden;
+  text-align: right;
   text-overflow: ellipsis;
   text-transform: none;
   white-space: nowrap;
+}
+
+.bob-band-count {
+  align-items: center;
+  background: #eef2f6;
+  border-radius: 999px;
+  color: #24292f;
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 750;
+  justify-content: center;
+  min-width: 1.25rem;
+  padding: 0.05rem 0.35rem;
 }
 
 .bob-card-list {

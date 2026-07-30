@@ -11,10 +11,8 @@ Functionality:
   per-board display settings, column band mappings, and the summary-only
   "selected" flag (never part of the real board data).
 
-  This is a personal overview, so each band is filtered to cards relevant
-  to the local user only: cards they own come first, then cards they're a
-  participant on, then nothing else - no cards with neither relation ever
-  appear here (though they're untouched on the real board).
+  Each band shows every card in its mapped column. Cards owned by the local
+  user come first, followed by cards they participate in, then all others.
 
 Contract:
   Local-only config/state lives in
@@ -31,9 +29,27 @@ Used API:
 
 from __future__ import annotations
 
+from functools import wraps
 from typing import Any, Protocol
 
 from sovereign import ProtocolNode, Session, SessionResult
+
+
+def _session_transaction(method):
+    """Run one operation that reads or writes this application's metadata.
+
+    Session hands out the live metadata namespace only to a lock holder, so
+    a read-modify-write here has to be one transaction. Core's response
+    helpers already establish it for HTTP requests; taking it here as well
+    is free (Session.lock is re-entrant) and keeps each operation correct
+    when called directly - from a facade, a test, or a future caller that
+    is not an HTTP handler.
+    """
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self.session.lock:
+            return method(self, *args, **kwargs)
+    return wrapped
 
 
 PERSONAL_COCKPIT_APPLICATION_ID = "personal-cockpit"
@@ -55,6 +71,14 @@ class BoardOfBoardsLogic:
         self.config = config or {}
         self.facades = facades
         self._kanban_facade_error = ""
+        with self.session.lock:
+            metadata = self.session.application_metadata(APP_METADATA_KEY)
+            stored = metadata.get("board_settings", {})
+            settings = (
+                stored if isinstance(stored, dict) else {}
+            )
+            self._migrate_old_metadata(settings, metadata)
+            metadata["board_settings"] = settings
 
     def _kanban(self):
         if self.facades is None:
@@ -91,7 +115,9 @@ class BoardOfBoardsLogic:
         except ValueError:
             return None
 
-    def _agreement_summaries(self) -> list[dict]:
+    def _agreement_summaries(
+        self, network_by_topic: dict[str, dict] | None = None,
+    ) -> list[dict]:
         agreement = self._agreement()
         if agreement is None:
             return []
@@ -99,10 +125,18 @@ class BoardOfBoardsLogic:
         nodes = agreement.agreements()
         expanded_uuids = self._agreement_expanded()
         live = {node.uuid for node in nodes}
-        expanded_uuids[:] = [uuid for uuid in expanded_uuids if uuid in live]
+        expanded_uuids = [uuid for uuid in expanded_uuids if uuid in live]
         summaries = []
         for node in nodes:
-            events = agreement.transition_events(node.uuid)
+            network = (
+                None if network_by_topic is None
+                else network_by_topic.get(node.uuid, {})
+            )
+            events = (
+                agreement.transition_events(node.uuid)
+                if network is None
+                else agreement.transition_events(node.uuid, network)
+            )
             grouped = agreement.transition_by_node(events)
             unsettled = sum(
                 1 for value in grouped.values()
@@ -122,6 +156,7 @@ class BoardOfBoardsLogic:
                     self._agreement_sections(agreement, node) if expanded else []
                 ),
                 "order": order.get(node.uuid, 0),
+                "_transition_by_node": grouped,
             })
         summaries.sort(key=lambda item: (item["order"], item["title"]))
         return summaries
@@ -140,20 +175,31 @@ class BoardOfBoardsLogic:
             for section in facade.sections(agreement)
         ]
 
-    def _agreement_order(self) -> dict:
-        order = self._metadata().setdefault("agreement_order", {})
+    def _agreement_order(self, *, mutable: bool = False) -> dict:
+        metadata = self._metadata()
+        order = (
+            metadata.setdefault("agreement_order", {})
+            if mutable else metadata.get("agreement_order", {})
+        )
         if not isinstance(order, dict):
             order = {}
-            self._metadata()["agreement_order"] = order
+            if mutable:
+                metadata["agreement_order"] = order
         return order
 
-    def _agreement_expanded(self) -> list:
-        expanded = self._metadata().setdefault("expanded_agreement_uuids", [])
+    def _agreement_expanded(self, *, mutable: bool = False) -> list:
+        metadata = self._metadata()
+        expanded = (
+            metadata.setdefault("expanded_agreement_uuids", [])
+            if mutable else metadata.get("expanded_agreement_uuids", [])
+        )
         if not isinstance(expanded, list):
             expanded = []
-            self._metadata()["expanded_agreement_uuids"] = expanded
+            if mutable:
+                metadata["expanded_agreement_uuids"] = expanded
         return expanded
 
+    @_session_transaction
     def set_agreement_expanded(self, agreement_uuid: str,
                                expanded: bool) -> SessionResult:
         agreement = self._agreement()
@@ -161,29 +207,77 @@ class BoardOfBoardsLogic:
             return SessionResult("error", reason="Agreement application is not active")
         if agreement_uuid not in {node.uuid for node in agreement.agreements()}:
             return SessionResult("error", reason="agreement not found")
-        current = self._agreement_expanded()
+        current = self._agreement_expanded(mutable=True)
         if expanded and agreement_uuid not in current:
             current.append(agreement_uuid)
         elif not expanded and agreement_uuid in current:
             current.remove(agreement_uuid)
         return SessionResult("ok", value=agreement_uuid)
 
+    @_session_transaction
     def reorder_agreements(self, agreement_uuids: list[str]) -> SessionResult:
         agreement = self._agreement()
         if agreement is None:
             return SessionResult("error", reason="Agreement application is not active")
         valid = {node.uuid for node in agreement.agreements()}
-        order = self._agreement_order()
+        order = self._agreement_order(mutable=True)
         for position, uuid in enumerate(
             uuid for uuid in agreement_uuids if uuid in valid
         ):
             order[uuid] = position
         return SessionResult("ok", value=agreement_uuids)
 
+    def _normalized_tile_order(
+        self, boards: list[dict], agreements: list[dict],
+    ) -> list[str]:
+        candidates = [
+            *(item["uuid"] for item in boards),
+            *(item["uuid"] for item in agreements),
+        ]
+        valid = set(candidates)
+        stored = self._metadata().get("tile_order", [])
+        if not isinstance(stored, list):
+            stored = []
+        order = []
+        for uuid in stored:
+            if uuid in valid and uuid not in order:
+                order.append(uuid)
+        order.extend(uuid for uuid in candidates if uuid not in order)
+        return order
+
+    @_session_transaction
+    def reorder_tiles(self, tile_uuids: list[str]) -> SessionResult:
+        if not isinstance(tile_uuids, list):
+            return SessionResult("error", reason="tile_uuids must be a list")
+        valid = {
+            *(board.uuid for board in (
+                self._kanban().boards() if self._kanban() else []
+            )),
+            *(node.uuid for node in (
+                self._agreement().agreements() if self._agreement() else []
+            )),
+        }
+        current = self._metadata().get("tile_order", [])
+        if not isinstance(current, list):
+            current = []
+        order = []
+        for uuid in tile_uuids:
+            if uuid in valid and uuid not in order:
+                order.append(uuid)
+        order.extend(
+            uuid for uuid in current
+            if uuid in valid and uuid not in order
+        )
+        order.extend(sorted(valid - set(order)))
+        self._metadata()["tile_order"] = order
+        return SessionResult("ok", value=order)
+
+    @_session_transaction
     def select_topic(self, topic_uuid: str) -> SessionResult:
+        agreement = self._agreement()
         valid = {
             *(board.uuid for board in (self._kanban().boards() if self._kanban() else [])),
-            *(item["uuid"] for item in self._agreement_summaries()),
+            *(node.uuid for node in (agreement.agreements() if agreement else [])),
         }
         if topic_uuid not in valid:
             return SessionResult("error", reason="topic not found")
@@ -214,11 +308,11 @@ class BoardOfBoardsLogic:
             (item for item in topics if item["uuid"] == selected_uuid),
             topics[0] if topics else None,
         )
-        if selected:
-            self._metadata()["selected_topic_uuid"] = selected["uuid"]
         return selected
 
-    def _collaboration_context(self, selected: dict | None) -> dict:
+    def _collaboration_context(
+        self, selected: dict | None, network: dict | None = None,
+    ) -> dict:
         if not selected:
             return {
                 "agenda_items": [],
@@ -232,10 +326,21 @@ class BoardOfBoardsLogic:
             if selected["application_id"] == KANBAN_APPLICATION_ID
             else self._agreement()
         )
-        return facade.collaboration_context(selected["uuid"]) if facade else {}
+        if not facade:
+            return {}
+        return (
+            facade.collaboration_context(selected["uuid"])
+            if network is None
+            else facade.collaboration_context(selected["uuid"], network)
+        )
 
-    def summary_payload(self) -> dict:
-        metadata = self._metadata()
+    @_session_transaction
+    def tiles_payload(
+        self, network_by_topic: dict[str, dict] | None = None,
+    ) -> dict:
+        # This is an authoritative Session builder. Live observations are
+        # supplied explicitly by composite_response after Session is released.
+        network_by_topic = network_by_topic or {}
         kanban = self._kanban()
         # Which topic-creating applications this host can offer in the
         # "+ Add new" menu - the cockpit itself creates neither, it only
@@ -245,17 +350,17 @@ class BoardOfBoardsLogic:
             creatable.append(
                 {"application_id": AGREEMENT_APPLICATION_ID, "label": "Agreement"}
             )
-        agreements = self._agreement_summaries()
+        agreements = self._agreement_summaries(network_by_topic)
         if kanban is None:
             selected = self._selected_topic([], agreements)
             return {
                 "boards": [],
                 "agreements": agreements,
+                "tile_order": self._normalized_tile_order([], agreements),
                 "creatable": creatable,
                 "people": [],
                 "users": [],
                 "selected_topic": selected,
-                **self._collaboration_context(selected),
                 "sources": {
                     KANBAN_APPLICATION_ID: {
                         "available": False,
@@ -266,7 +371,14 @@ class BoardOfBoardsLogic:
         boards = kanban.boards()
         settings_by_board = self._normalized_settings(boards)
         boards_out = [
-            self._board_summary(board, settings_by_board.get(board.uuid, {}))
+            self._board_summary(
+                board,
+                settings_by_board.get(board.uuid, {}),
+                (
+                    None if network_by_topic is None
+                    else network_by_topic.get(board.uuid, {})
+                ),
+            )
             for board in sorted(
                 boards,
                 key=lambda board: (
@@ -289,6 +401,9 @@ class BoardOfBoardsLogic:
         return {
             "boards": boards_out,
             "agreements": agreements,
+            "tile_order": self._normalized_tile_order(
+                boards_out, agreements,
+            ),
             "creatable": creatable,
             # Every peer this session knows about, for the card-edit modal's
             # owner/members picker - not board-scoped (unlike kanban.html's
@@ -297,16 +412,225 @@ class BoardOfBoardsLogic:
             "people": list(self._people_by_uuid().values()),
             "users": kanban.users(),
             "selected_topic": selected,
-            **self._collaboration_context(selected),
             "sources": {KANBAN_APPLICATION_ID: {"available": True}},
         }
 
-    def _board_summary(self, board: ProtocolNode, settings: dict) -> dict:
+    @_session_transaction
+    def context_payload(
+        self,
+        selected: dict | None = None,
+        network_by_topic: dict[str, dict] | None = None,
+    ) -> dict:
+        network_by_topic = network_by_topic or {}
+        if selected is None:
+            kanban = self._kanban()
+            boards = [
+                {
+                    "uuid": board.uuid,
+                    "name": board.data.get("name", ""),
+                }
+                for board in (kanban.boards() if kanban else [])
+            ]
+            agreement = self._agreement()
+            agreements = [
+                {
+                    "uuid": node.uuid,
+                    "title": node.data.get("title", ""),
+                }
+                for node in (agreement.agreements() if agreement else [])
+            ]
+            selected = self._selected_topic(boards, agreements)
+        return {
+            "selected_topic": selected,
+            **self._collaboration_context(
+                selected,
+                (
+                    None if network_by_topic is None or not selected
+                    else network_by_topic.get(selected["uuid"], {})
+                ),
+            ),
+        }
+
+    @_session_transaction
+    def summary_payload(self) -> dict:
+        """Compatibility view for consumers that still need one response."""
+        payload = self.tiles_payload()
+        payload.update(self.context_payload(payload.get("selected_topic")))
+        return payload
+
+    @_session_transaction
+    def tiles_snapshot(self) -> dict:
+        """Build the authoritative tile snapshot and its observation plan."""
+        topics = self._topic_descriptors()
+        unfiltered = {
+            item["uuid"]: {"_include_all": True} for item in topics
+        }
+        return {
+            "payload": self.tiles_payload(unfiltered),
+            "topics": topics,
+        }
+
+    @_session_transaction
+    def context_snapshot(self) -> dict:
+        """Build the authoritative context snapshot and its observation plan."""
+        topics = self._topic_descriptors()
+        unfiltered = {
+            item["uuid"]: {"_include_all": True} for item in topics
+        }
+        return {
+            "payload": self.context_payload(network_by_topic=unfiltered),
+            "topics": topics,
+        }
+
+    @_session_transaction
+    def summary_snapshot(self) -> dict:
+        topics = self._topic_descriptors()
+        unfiltered = {
+            item["uuid"]: {"_include_all": True} for item in topics
+        }
+        payload = self.tiles_payload(unfiltered)
+        payload.update(self.context_payload(
+            payload.get("selected_topic"), unfiltered,
+        ))
+        return {"payload": payload, "topics": topics}
+
+    def _topic_descriptors(self) -> list[dict]:
+        kanban = self._kanban()
+        agreement = self._agreement()
+        return [
+            *(
+                {
+                    "uuid": board.uuid,
+                    "application_id": KANBAN_APPLICATION_ID,
+                }
+                for board in (kanban.boards() if kanban else [])
+            ),
+            *(
+                {
+                    "uuid": node.uuid,
+                    "application_id": AGREEMENT_APPLICATION_ID,
+                }
+                for node in (agreement.agreements() if agreement else [])
+            ),
+        ]
+
+    @classmethod
+    def merge_observations(
+        cls, snapshot: dict, observations: dict[str, dict],
+    ) -> dict:
+        """Decorate detached Session data with transport liveness."""
+        payload = snapshot["payload"]
+        policies = {
+            item["uuid"]: item["application_id"]
+            for item in snapshot.get("topics", [])
+        }
+        for board in payload.get("boards", []):
+            topic_uuid = board.get("uuid")
+            grouped = cls._filter_transition_groups(
+                board.pop("_transition_by_node", {}),
+                observations.get(topic_uuid, {}),
+                KANBAN_APPLICATION_ID,
+            )
+            discussion_nodes = set(board.pop("_discussion_node_uuids", []))
+            board["discussion_count"] = len(
+                discussion_nodes.intersection(grouped)
+            )
+            for card in [
+                *board.get("active_cards", []),
+                *board.get("next_cards", []),
+            ]:
+                transition = grouped.get(card.get("uuid"))
+                card["transition"] = transition
+                visible_peers = {
+                    event.get("peer_addr")
+                    for event in (
+                        (transition or {}).get("events")
+                        or ([transition] if transition else [])
+                    )
+                }
+                card["perspectives"] = [
+                    item for item in card.get("perspectives", [])
+                    if item.get("peer_addr") in visible_peers
+                ]
+        for agreement in payload.get("agreements", []):
+            topic_uuid = agreement.get("uuid")
+            grouped = cls._filter_transition_groups(
+                agreement.pop("_transition_by_node", {}),
+                observations.get(topic_uuid, {}),
+                AGREEMENT_APPLICATION_ID,
+            )
+            agreement["unsettled_count"] = sum(
+                1 for value in grouped.values()
+                if value.get("type") not in (None, "in_agreement")
+            )
+        selected = payload.get("selected_topic") or {}
+        selected_uuid = selected.get("uuid")
+        if selected_uuid and "transition_by_node" in payload:
+            policy = policies.get(
+                selected_uuid, selected.get("application_id"),
+            )
+            payload["transition_events"] = [
+                event for event in payload.get("transition_events", [])
+                if cls._transition_is_visible(
+                    event, observations.get(selected_uuid, {}), policy,
+                )
+            ]
+            payload["transition_by_node"] = cls._filter_transition_groups(
+                payload.get("transition_by_node", {}),
+                observations.get(selected_uuid, {}),
+                policy,
+            )
+        return payload
+
+    @classmethod
+    def _filter_transition_groups(
+        cls, grouped: dict, network: dict, policy: str | None,
+    ) -> dict:
+        filtered = {}
+        for node_uuid, group in grouped.items():
+            candidates = group.get("events") or [group]
+            visible = [
+                event for event in candidates
+                if cls._transition_is_visible(event, network, policy)
+            ]
+            if not visible:
+                continue
+            top = max(
+                visible,
+                key=lambda event: int(event.get(
+                    "priority",
+                    Session.TRANSITION_PRIORITY.get(event.get("type"), 0),
+                )),
+            )
+            merged = dict(top)
+            if any(event.get("type") != "in_agreement" for event in visible):
+                merged["events"] = visible
+            filtered[node_uuid] = merged
+        return filtered
+
+    @staticmethod
+    def _transition_is_visible(
+        event: dict, network: dict, policy: str | None,
+    ) -> bool:
+        if event.get("type") != "in_transition":
+            return True
+        peer = ((network.get("peers") or {}).get(
+            event.get("peer_addr"),
+        ) or {})
+        state = (peer.get("channel_liveness") or {}).get("state", "unknown")
+        if policy == KANBAN_APPLICATION_ID:
+            return state == "alive"
+        return state != "stale"
+
+    def _board_summary(
+        self, board: ProtocolNode, settings: dict,
+        network: dict | None = None,
+    ) -> dict:
         columns = self.kanban.columns(board)
         columns_by_uuid = {column.uuid: column for column in columns}
         people_by_uuid = self._people_by_uuid()
         transition_by_node = self.kanban.transition_by_node(
-            self.kanban.transition_events(board.uuid)
+            self.kanban.transition_events(board.uuid, network)
         )
         active_uuid = settings.get("active_column_uuid")
         next_uuid = settings.get("next_column_uuid")
@@ -317,13 +641,11 @@ class BoardOfBoardsLogic:
         card_count = 0
         for column in columns:
             card_count += len(self.kanban.cards(column))
-        discussion_count = self._discussion_card_count(board)
+        discussion_nodes = self._discussion_card_uuids(board, network)
         active_cards = []
         for column_uuid in active_uuids:
             for card in self.kanban.cards(columns_by_uuid[column_uuid]):
                 relevance = self._relevance(card, my_id)
-                if relevance is None:
-                    continue
                 entry = self._card_summary(
                     card,
                     columns_by_uuid[column_uuid],
@@ -337,8 +659,6 @@ class BoardOfBoardsLogic:
         for column_uuid in next_uuids:
             for card in self.kanban.cards(columns_by_uuid[column_uuid]):
                 relevance = self._relevance(card, my_id)
-                if relevance is None:
-                    continue
                 entry = self._card_summary(
                     card,
                     columns_by_uuid[column_uuid],
@@ -347,10 +667,11 @@ class BoardOfBoardsLogic:
                 )
                 entry["relevance"] = relevance
                 next_cards.append(entry)
-        # Stable sort: owner cards first, then participant cards, each
-        # group keeping its existing column/order sequence.
-        active_cards.sort(key=lambda entry: entry["relevance"] != "owner")
-        next_cards.sort(key=lambda entry: entry["relevance"] != "owner")
+        # Stable sort: personal cards first, while each group keeps its
+        # existing column/order sequence.
+        relevance_order = {"owner": 0, "participant": 1, "other": 2}
+        active_cards.sort(key=lambda entry: relevance_order[entry["relevance"]])
+        next_cards.sort(key=lambda entry: relevance_order[entry["relevance"]])
         return {
             "uuid": board.uuid,
             "application_id": KANBAN_APPLICATION_ID,
@@ -359,7 +680,7 @@ class BoardOfBoardsLogic:
             "expanded": bool(settings.get("expanded", False)),
             "order": int(settings.get("order", 0) or 0),
             "card_count": card_count,
-            "discussion_count": discussion_count,
+            "discussion_count": len(discussion_nodes),
             "agenda_count": len(self.session.agenda_items(board.uuid)),
             "column_count": len(columns),
             "columns": [
@@ -372,19 +693,28 @@ class BoardOfBoardsLogic:
             "next_column_uuid": next_uuids[0] if next_uuids else "",
             "active_cards": active_cards,
             "next_cards": next_cards,
+            "_transition_by_node": transition_by_node,
+            "_discussion_node_uuids": sorted(discussion_nodes),
         }
 
     @staticmethod
-    def _relevance(card: ProtocolNode, my_id: str) -> str | None:
+    def _relevance(card: ProtocolNode, my_id: str) -> str:
         if card.data.get("owner") == my_id:
             return "owner"
         if my_id in (card.data.get("participants") or []):
             return "participant"
-        return None
+        return "other"
 
-    def _discussion_card_count(self, board: ProtocolNode) -> int:
+    def _discussion_card_count(
+        self, board: ProtocolNode, network: dict | None = None,
+    ) -> int:
+        return len(self._discussion_card_uuids(board, network))
+
+    def _discussion_card_uuids(
+        self, board: ProtocolNode, network: dict | None = None,
+    ) -> set[str]:
         card_uuids = set()
-        for event in self.kanban.transition_events(board.uuid):
+        for event in self.kanban.transition_events(board.uuid, network):
             if event.get("type") in ("in_agreement", "in_transition"):
                 continue
             node_uuid = event.get("node_uuid")
@@ -397,7 +727,7 @@ class BoardOfBoardsLogic:
             node = local_node or peer_node
             if node and node.data.get("type") == "kanban_card":
                 card_uuids.add(node_uuid)
-        return len(card_uuids)
+        return card_uuids
 
     def _people_by_uuid(self) -> dict[str, dict]:
         people = {}
@@ -498,6 +828,7 @@ class BoardOfBoardsLogic:
             })
         return perspectives
 
+    @_session_transaction
     def update_board_settings(self, board_uuid: str,
                               expanded: bool | None = None,
                               active_column_uuid: str | None = None,
@@ -527,6 +858,7 @@ class BoardOfBoardsLogic:
         settings[board_uuid] = current
         return SessionResult("ok", value=board_uuid)
 
+    @_session_transaction
     def reorder_boards(self, board_uuids: list[str]) -> SessionResult:
         # Expanded and collapsed boards each have their own left/right
         # ordering in the UI, so reordering only ever touches the group
@@ -554,6 +886,7 @@ class BoardOfBoardsLogic:
             settings[board_uuid] = item
         return SessionResult("ok", value=ordered)
 
+    @_session_transaction
     def pick_board(self, board_uuid: str,
                    active_column_uuids: list[str] | None = None,
                    next_column_uuids: list[str] | None = None) -> SessionResult:
@@ -564,9 +897,11 @@ class BoardOfBoardsLogic:
             next_column_uuid=(next_column_uuids or [""])[0],
         )
 
+    @_session_transaction
     def unpick_board(self, board_uuid: str) -> SessionResult:
         return self.update_board_settings(board_uuid, expanded=False)
 
+    @_session_transaction
     def toggle_selected(self, card_uuid: str) -> SessionResult:
         card = self.session.protocol.index.get(card_uuid)
         if not card or card.data.get("type") != "kanban_card":
@@ -770,31 +1105,65 @@ class BoardOfBoardsLogic:
 
     def _normalized_settings(self, boards: list[ProtocolNode]) -> dict[str, dict]:
         metadata = self._metadata()
-        settings = metadata.setdefault("board_settings", {})
-        self._migrate_old_metadata(settings)
+        stored = metadata.get("board_settings", {})
+        settings = (
+            {
+                uuid: dict(item)
+                for uuid, item in stored.items()
+                if isinstance(item, dict)
+            }
+            if isinstance(stored, dict) else {}
+        )
         valid_uuids = {board.uuid for board in boards}
         for stale_uuid in list(settings):
             if stale_uuid not in valid_uuids:
                 settings.pop(stale_uuid, None)
+        next_order = max(
+            (
+                int(item.get("order", -1) or 0)
+                for item in settings.values()
+            ),
+            default=-1,
+        ) + 1
         for board in boards:
             item = dict(settings.get(board.uuid, {}))
             item.setdefault("expanded", False)
             if "order" not in item:
-                item["order"] = self._next_order()
+                item["order"] = next_order
+                next_order += 1
             settings[board.uuid] = item
         return settings
 
-    def _migrate_old_metadata(self, settings: dict) -> None:
-        metadata = self._metadata()
+    def _migrate_old_metadata(
+        self, settings: dict, metadata: dict | None = None,
+    ) -> None:
+        metadata = metadata if metadata is not None else self._metadata()
         picked = metadata.pop("picked_boards", [])
         bindings = metadata.pop("board_bindings", {})
+        picked = picked if isinstance(picked, list) else []
+        bindings = bindings if isinstance(bindings, dict) else {}
         for order, board_uuid in enumerate(picked):
-            binding = bindings.get(board_uuid, {})
-            item = dict(settings.get(board_uuid, {}))
-            item["expanded"] = True
-            item["order"] = order
-            item["active_column_uuid"] = (binding.get("active_column_uuids") or [""])[0]
-            item["next_column_uuid"] = (binding.get("next_column_uuids") or [""])[0]
+            binding = (
+                bindings.get(board_uuid, {})
+                if isinstance(bindings.get(board_uuid, {}), dict) else {}
+            )
+            existing = settings.get(board_uuid, {})
+            item = dict(existing) if isinstance(existing, dict) else {}
+            active = binding.get("active_column_uuids")
+            following = binding.get("next_column_uuids")
+            item.setdefault("expanded", True)
+            item.setdefault("order", order)
+            item.setdefault(
+                "active_column_uuid",
+                active[0] if isinstance(active, list) and active else "",
+            )
+            item.setdefault(
+                "next_column_uuid",
+                (
+                    following[0]
+                    if isinstance(following, list) and following else ""
+                ),
+            )
             settings[board_uuid] = item
 
     def _next_order(self) -> int:
