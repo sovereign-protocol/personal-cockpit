@@ -31,8 +31,8 @@ jobs:
       - name: Check out Sovereign Core
         uses: actions/checkout@v4
         with:
-          repository: sovereign-protocol/core
-          path: core
+          repository: sovereign-protocol/s-core
+          path: s-core
 
       - name: Check out S-Initiative
         uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             s-cockpit/pyproject.toml
-            core/pyproject.toml
+            s-core/pyproject.toml
             s-initiative/pyproject.toml
             s-team/pyproject.toml
 
@@ -61,7 +61,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyinstaller
           python -m pip install \
-            -e ./core \
+            -e ./s-core \
             -e ./s-initiative \
             -e ./s-team \
             -e "./s-cockpit[desktop]"
