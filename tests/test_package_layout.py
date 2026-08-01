@@ -226,6 +226,11 @@ class AssetTests(unittest.TestCase):
             for pattern in ('href = `/?', 'href="/?', "href='/?"):
                 self.assertNotIn(pattern, line, f"boardofboards.html:{number}")
 
+    def test_people_and_multi_type_add_use_the_shared_ui_primitives(self):
+        self.assertIn("SovereignUI.avatar", self.cockpit)
+        self.assertIn('class="ui-button"', self.cockpit)
+        self.assertIn("+ Add new…", self.cockpit)
+
     def test_cross_application_links_name_the_target_asset_prefix(self):
         self.assertIn("/apps/kanban?board=", self.cockpit)
         self.assertIn("/apps/decision?process_uuid=", self.cockpit)

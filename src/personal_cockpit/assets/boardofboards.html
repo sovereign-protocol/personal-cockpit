@@ -15,7 +15,7 @@
 
     <template id="cockpitHeaderControls">
       <div class="bob-add-new">
-        <button id="addNewBtn" aria-haspopup="true">+ Add new</button>
+        <button id="addNewBtn" class="ui-button" aria-haspopup="true">+ Add new…</button>
         <div id="addNewMenu" class="bob-add-menu" hidden></div>
       </div>
     </template>
@@ -914,18 +914,13 @@
       }
 
       function personAvatar(person, owner) {
-        const avatar = document.createElement("span");
-        avatar.className = owner ? "participant-avatar owner" : "participant-avatar";
-        avatar.title = owner
-          ? `${person.name || "Unknown"} (owner)`
-          : person.name || "Unknown participant";
-        if (person.picture) {
-          avatar.style.backgroundImage = `url("${cssUrl(person.picture)}")`;
-          avatar.textContent = "";
-        } else {
-          avatar.textContent = initials(person.name || "?");
-        }
-        return avatar;
+        return SovereignUI.avatar(person, {
+          className: "participant-avatar",
+          owner,
+          title: owner
+            ? `${person.name || "Unknown"} (owner)`
+            : person.name || "Unknown participant",
+        });
       }
 
       function initials(name) {
@@ -973,13 +968,9 @@
           button.disabled = modalReadOnlyPerspective;
           button.className = "user-choice";
           if (modalParticipants.includes(person.id)) button.classList.add("selected");
-          const avatar = document.createElement("span");
-          avatar.className = "participant-avatar";
-          if (person.picture) {
-            avatar.style.backgroundImage = `url("${cssUrl(person.picture)}")`;
-          } else {
-            avatar.textContent = initials(person.name);
-          }
+          const avatar = SovereignUI.avatar(person, {
+            className: "participant-avatar",
+          });
           const name = document.createElement("span");
           name.textContent = person.name;
           button.append(avatar, name);
