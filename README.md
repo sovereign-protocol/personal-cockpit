@@ -37,8 +37,8 @@ so this still opens when one is absent.
 .\.venv\Scripts\pyinstaller.exe Sovereign.spec
 ```
 
-The result is `dist/Sovereign.exe` — the Cockpit, S-Kanban, S-Agreement and the
-Core they run on in a single window.
+The result is `dist/Sovereign.exe` — the Cockpit, S-Kanban, S-Agreement,
+S-decision and the Core they run on in a single window.
 
 ### Building for macOS without a Mac
 
