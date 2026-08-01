@@ -30,6 +30,9 @@ running a host per application:
 Whichever source applications are installed are mounted; the rest are skipped,
 so this still opens when one is absent.
 
+Set `"header_title": "My Cockpit"` in the JSON config to choose the primary
+application name shown in the shared header, including in a browser client.
+
 ### Building the combined executable
 
 ```powershell

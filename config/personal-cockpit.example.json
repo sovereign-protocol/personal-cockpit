@@ -3,5 +3,6 @@
     {"module": "personal_cockpit.application"}
   ],
   "primary_application_id": "personal-cockpit",
+  "header_title": "Personal Cockpit",
   "advertise_host": "127.0.0.1"
 }

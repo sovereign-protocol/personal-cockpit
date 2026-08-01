@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The Cockpit name shown in the shared header can be customized with
+  `header_title` in the JSON configuration, including in browser clients.
+
 ## 0.1.0a2 - 2026-07-30
 
 - Add GitHub Actions builds for Apple Silicon and Intel macOS application

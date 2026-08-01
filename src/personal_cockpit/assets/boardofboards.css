@@ -1,7 +1,9 @@
 /* U4: one theme for 0.1 - dark everywhere. Declaring color-scheme makes
    native controls, scrollbars, and form widgets match rather than
    rendering light on a dark surface. */
-:root { color-scheme: dark; }
+:root {
+  color-scheme: dark;
+}
 
 * {
   box-sizing: border-box;
@@ -15,7 +17,11 @@
    not be reached at all. */
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
   background: #f4f5f7;
   color: #1b1f23;
   --bob-lane-width: 560px;
@@ -437,16 +443,36 @@ dialog.relay-target-dialog {
   background: #8c9bab;
 }
 
-.bob-card.event-peer_made_changes { border-left-color: #00875a; }
-.bob-card.event-peer_made_changes::before { background: #00875a; }
-.bob-card.event-local_missing_node { border-left-color: #00a3bf; }
-.bob-card.event-local_missing_node::before { background: #00a3bf; }
-.bob-card.event-local_made_changes { border-left-color: #6554c0; }
-.bob-card.event-local_made_changes::before { background: #6554c0; }
-.bob-card.event-peer_missing_node { border-left-color: #6b778c; }
-.bob-card.event-peer_missing_node::before { background: #6b778c; }
-.bob-card.event-divergence { border-left-color: #de350b; }
-.bob-card.event-divergence::before { background: #de350b; }
+.bob-card.event-peer_made_changes {
+  border-left-color: #00875a;
+}
+.bob-card.event-peer_made_changes::before {
+  background: #00875a;
+}
+.bob-card.event-local_missing_node {
+  border-left-color: #00a3bf;
+}
+.bob-card.event-local_missing_node::before {
+  background: #00a3bf;
+}
+.bob-card.event-local_made_changes {
+  border-left-color: #6554c0;
+}
+.bob-card.event-local_made_changes::before {
+  background: #6554c0;
+}
+.bob-card.event-peer_missing_node {
+  border-left-color: #6b778c;
+}
+.bob-card.event-peer_missing_node::before {
+  background: #6b778c;
+}
+.bob-card.event-divergence {
+  border-left-color: #de350b;
+}
+.bob-card.event-divergence::before {
+  background: #de350b;
+}
 
 .bob-card.diff .bob-status-select {
   margin-right: 1.25rem;
@@ -798,7 +824,9 @@ button,
 }
 
 /* "+ Add new" dropdown and its menu. */
-.bob-add-new { position: relative; }
+.bob-add-new {
+  position: relative;
+}
 .bob-add-menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -818,7 +846,9 @@ button,
   border-color: #2f6feb;
   box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.18);
 }
-.bob-add-menu[hidden] { display: none; }
+.bob-add-menu[hidden] {
+  display: none;
+}
 .bob-add-menu button {
   text-align: left;
   padding: 8px 10px;
@@ -828,7 +858,9 @@ button,
   border-radius: 6px;
   cursor: pointer;
 }
-.bob-add-menu button:hover { background: rgba(255, 255, 255, 0.08); }
+.bob-add-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
 
 /* Agreement tiles carry the same header as a board tile. What differs is
    what enlarging shows: a board opens its bands, an agreement its text. */
@@ -1006,7 +1038,9 @@ button,
   background: none;
   color: #1b1f23;
 }
-:root[data-theme="light"] .bob-add-menu button:hover { background: rgba(0, 0, 0, 0.06); }
+:root[data-theme="light"] .bob-add-menu button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
 :root[data-theme="light"] .bob-board.selected-topic {
   border-color: #0969da;
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.18);

@@ -24,8 +24,6 @@
 
     <div id="reactionMenu" class="reaction-menu" role="menu" hidden></div>
 
-
-
     <dialog id="cardModal">
       <form method="dialog" id="cardForm">
         <h2 id="cardModalTitle">Edit Card</h2>
@@ -60,8 +58,8 @@
       <div class="bob-manage">
         <h2 id="agreementSettingsTitle">Agreement settings</h2>
         <p class="bob-hint">
-          An agreement has nothing to map onto bands the way a board does, so
-          this is where deleting one lives.
+          An agreement has nothing to map onto bands the way a board does, so this is where deleting
+          one lives.
         </p>
         <menu>
           <button type="button" id="deleteAgreementBtn" class="danger">Delete agreement</button>
@@ -81,7 +79,6 @@
         </menu>
       </form>
     </dialog>
-
 
     <dialog id="newAgreementModal">
       <form method="dialog" id="newAgreementForm">
@@ -132,22 +129,22 @@
       };
       const APP_ICONS = {
         kanban:
-          '<rect x="4" y="4" width="4" height="16" rx="1"></rect>'
-          + '<rect x="10" y="4" width="4" height="11" rx="1"></rect>'
-          + '<rect x="16" y="4" width="4" height="7" rx="1"></rect>',
+          '<rect x="4" y="4" width="4" height="16" rx="1"></rect>' +
+          '<rect x="10" y="4" width="4" height="11" rx="1"></rect>' +
+          '<rect x="16" y="4" width="4" height="7" rx="1"></rect>',
         agreement:
-          '<path d="M6 3h8l4 4v14H6z"></path>'
-          + '<path d="M14 3v4h4"></path><path d="M9 13h6"></path>'
-          + '<path d="M9 17h6"></path>',
+          '<path d="M6 3h8l4 4v14H6z"></path>' +
+          '<path d="M14 3v4h4"></path><path d="M9 13h6"></path>' +
+          '<path d="M9 17h6"></path>',
         decision:
-          '<path d="M5 4h14v16H5z"></path>'
-          + '<path d="M8 9l2 2 5-5"></path>'
-          + '<path d="M8 15h8"></path>',
+          '<path d="M5 4h14v16H5z"></path>' +
+          '<path d="M8 9l2 2 5-5"></path>' +
+          '<path d="M8 15h8"></path>',
       };
       const el = (id) => document.getElementById(id);
 
       const api = SovereignApi.request;
-      const sessionView = SovereignSessionView.create({request: api});
+      const sessionView = SovereignSessionView.create({ request: api });
       sessionView
         .defineView("tiles", {
           load: () => api("/api/personal-cockpit/tiles"),
@@ -168,22 +165,22 @@
       });
 
       function mutationRequest(context, path, body = {}, suffix = "") {
-        const mutationId = suffix
-          ? `${context.mutationId}:${suffix}`
-          : context.mutationId;
-        return api(path, {...body, mutation_id: mutationId}, {
-          signal: context.signal,
-        });
+        const mutationId = suffix ? `${context.mutationId}:${suffix}` : context.mutationId;
+        return api(
+          path,
+          { ...body, mutation_id: mutationId },
+          {
+            signal: context.signal,
+          },
+        );
       }
 
       function run(action, successMessage) {
         const promise = sessionView.mutate({
           key: `action:${Date.now()}:${Math.random()}`,
           command: "application-action",
-          action: (context) => action(
-            (path, body, suffix) =>
-              mutationRequest(context, path, body, suffix),
-          ),
+          action: (context) =>
+            action((path, body, suffix) => mutationRequest(context, path, body, suffix)),
           invalidates: ["tiles", "context"],
         });
         promise
@@ -192,18 +189,14 @@
         return promise;
       }
 
-      function submitMutation({
-        key, command, arguments: args, action, project, successMessage,
-      }) {
+      function submitMutation({ key, command, arguments: args, action, project, successMessage }) {
         const promise = sessionView.mutate({
           key,
           command,
           arguments: args,
           project,
-          action: (context) => action(
-            (path, body, suffix) =>
-              mutationRequest(context, path, body, suffix),
-          ),
+          action: (context) =>
+            action((path, body, suffix) => mutationRequest(context, path, body, suffix)),
           invalidates: ["tiles", "context"],
         });
         promise
@@ -248,14 +241,10 @@
           group.forEach((tile, i) =>
             lane.append(
               tile.application_id === "agreement"
-                ? renderAgreementTile(
-                    tile, chunkIndex * 5 + i, collapsed.length,
-                  )
+                ? renderAgreementTile(tile, chunkIndex * 5 + i, collapsed.length)
                 : tile.application_id === "decision"
                   ? renderdecisionTile(tile, chunkIndex * 5 + i, collapsed.length)
-                  : renderCollapsedBoard(
-                      tile, chunkIndex * 5 + i, collapsed.length,
-                    ),
+                  : renderCollapsedBoard(tile, chunkIndex * 5 + i, collapsed.length),
             ),
           );
           container.append(lane);
@@ -273,11 +262,12 @@
         const link = document.createElement("a");
         link.className = "shell-topic-name";
         link.textContent = topic.title;
-        link.href = topic.application_id === "agreement"
-          ? `/apps/agreement?agreement=${encodeURIComponent(topic.uuid)}`
-          : topic.application_id === "decision"
-            ? `/apps/decision?process_uuid=${encodeURIComponent(topic.uuid)}`
-            : `/apps/kanban?board=${encodeURIComponent(topic.uuid)}`;
+        link.href =
+          topic.application_id === "agreement"
+            ? `/apps/agreement?agreement=${encodeURIComponent(topic.uuid)}`
+            : topic.application_id === "decision"
+              ? `/apps/decision?process_uuid=${encodeURIComponent(topic.uuid)}`
+              : `/apps/kanban?board=${encodeURIComponent(topic.uuid)}`;
         SovereignShell.setTopicRegion(link);
       }
 
@@ -292,9 +282,10 @@
           key: "selected-topic",
           command: "select-topic",
           arguments: selected,
-          action: (request) => request("/api/personal-cockpit/topics/select", {
-            topic_uuid: topic.uuid,
-          }),
+          action: (request) =>
+            request("/api/personal-cockpit/topics/select", {
+              topic_uuid: topic.uuid,
+            }),
           successMessage: `${topic.title || topic.name} selected`,
           project: (draft, nextTopic) => {
             draft.selected_topic = nextTopic;
@@ -322,19 +313,18 @@
       }
 
       function tilesInDisplayOrder() {
-        const order = new Map(
-          (state.tile_order || []).map((uuid, index) => [uuid, index]),
-        );
+        const order = new Map((state.tile_order || []).map((uuid, index) => [uuid, index]));
         return [
           ...(state.boards || []),
           ...(state.agreements || []),
           ...(state.processes || []),
-        ].sort((left, right) =>
-          (order.get(left.uuid) ?? Number.MAX_SAFE_INTEGER)
-          - (order.get(right.uuid) ?? Number.MAX_SAFE_INTEGER)
-          || String(left.name || left.title || "").localeCompare(
-            String(right.name || right.title || ""),
-          ),
+        ].sort(
+          (left, right) =>
+            (order.get(left.uuid) ?? Number.MAX_SAFE_INTEGER) -
+              (order.get(right.uuid) ?? Number.MAX_SAFE_INTEGER) ||
+            String(left.name || left.title || "").localeCompare(
+              String(right.name || right.title || ""),
+            ),
         );
       }
 
@@ -342,9 +332,7 @@
         const title = document.createElement("a");
         title.className = "bob-board-title";
         title.href = href;
-        const icon = document.createElementNS(
-          "http://www.w3.org/2000/svg", "svg",
-        );
+        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         icon.setAttribute("viewBox", "0 0 24 24");
         icon.setAttribute("aria-hidden", "true");
         icon.classList.add("bob-topic-icon");
@@ -372,11 +360,13 @@
         header.className = "bob-board-header";
         const main = document.createElement("div");
         main.className = "bob-board-main";
-        main.append(topicTitle(
-          "decision",
-          process.title || "Untitled decision process",
-          `/apps/decision?process_uuid=${encodeURIComponent(process.uuid)}`,
-        ));
+        main.append(
+          topicTitle(
+            "decision",
+            process.title || "Untitled decision process",
+            `/apps/decision?process_uuid=${encodeURIComponent(process.uuid)}`,
+          ),
+        );
         const stage = document.createElement("p");
         stage.className = "bob-decision-stage";
         stage.textContent = process.current_stage
@@ -438,15 +428,18 @@
         controls.append(moveButton("<", index === 0, () => moveTile(agreement, -1)));
         controls.append(moveButton(">", index >= total - 1, () => moveTile(agreement, 1)));
         if (agreement.expanded) {
-          controls.append(iconButton(ICON_COLLAPSE, "Collapse",
-            () => setAgreementExpanded(agreement, false)));
+          controls.append(
+            iconButton(ICON_COLLAPSE, "Collapse", () => setAgreementExpanded(agreement, false)),
+          );
         } else {
-          controls.append(iconButton(ICON_EXPAND, "Enlarge",
-            () => setAgreementExpanded(agreement, true)));
+          controls.append(
+            iconButton(ICON_EXPAND, "Enlarge", () => setAgreementExpanded(agreement, true)),
+          );
         }
         controls.append(iconButton(ICON_SHARE, "Share", () => openShareModal(agreement)));
-        controls.append(iconButton(ICON_SETTINGS, "Settings",
-          () => openAgreementSettings(agreement)));
+        controls.append(
+          iconButton(ICON_SETTINGS, "Settings", () => openAgreementSettings(agreement)),
+        );
         tools.append(controls, agreementStatus(agreement));
         header.append(tools);
         return header;
@@ -495,20 +488,18 @@
         return submitMutation({
           key: `expanded:${agreement.uuid}`,
           command: "set-agreement-expanded",
-          arguments: {uuid: agreement.uuid, expanded},
-          action: (request) => request(
-            "/api/personal-cockpit/agreements/settings", {
-            agreement_uuid: agreement.uuid,
-            expanded,
-          }),
+          arguments: { uuid: agreement.uuid, expanded },
+          action: (request) =>
+            request("/api/personal-cockpit/agreements/settings", {
+              agreement_uuid: agreement.uuid,
+              expanded,
+            }),
           successMessage: expanded ? "Enlarged" : "Collapsed",
           project: (draft, change) => {
-            const target = (draft.agreements || [])
-              .find((entry) => entry.uuid === change.uuid);
+            const target = (draft.agreements || []).find((entry) => entry.uuid === change.uuid);
             if (target) {
               target.expanded = change.expanded;
-              target.optimistic_loading = change.expanded
-                && !(target.sections || []).length;
+              target.optimistic_loading = change.expanded && !(target.sections || []).length;
             }
             return draft;
           },
@@ -517,9 +508,7 @@
 
       function moveTile(tile, direction) {
         const tiles = tilesInDisplayOrder();
-        const group = tiles.filter(
-          (entry) => Boolean(entry.expanded) === Boolean(tile.expanded),
-        );
+        const group = tiles.filter((entry) => Boolean(entry.expanded) === Boolean(tile.expanded));
         const order = group.map((entry) => entry.uuid);
         const index = order.indexOf(tile.uuid);
         const swapWith = index + direction;
@@ -528,16 +517,15 @@
         const other = tiles
           .filter((entry) => Boolean(entry.expanded) !== Boolean(tile.expanded))
           .map((entry) => entry.uuid);
-        const fullOrder = tile.expanded
-          ? [...order, ...other]
-          : [...other, ...order];
+        const fullOrder = tile.expanded ? [...order, ...other] : [...other, ...order];
         submitMutation({
           key: "tile-order",
           command: "reorder-tiles",
-          arguments: {tileOrder: fullOrder},
-          action: (request) => request("/api/personal-cockpit/tiles/reorder", {
-            tile_uuids: fullOrder,
-          }),
+          arguments: { tileOrder: fullOrder },
+          action: (request) =>
+            request("/api/personal-cockpit/tiles/reorder", {
+              tile_uuids: fullOrder,
+            }),
           successMessage: "Reordered",
           project: (draft, change) => {
             draft.tile_order = [...change.tileOrder];
@@ -637,10 +625,11 @@
           const value = div.textContent.trim();
           div.title = value;
           run(
-            (request) => request(
-              "/api/personal-cockpit/kanban/boards/set_objective",
-              {board_uuid: board.uuid, objective: value},
-            ),
+            (request) =>
+              request("/api/personal-cockpit/kanban/boards/set_objective", {
+                board_uuid: board.uuid,
+                objective: value,
+              }),
             "Objective updated",
           );
         };
@@ -704,7 +693,8 @@
       }
 
       function bandColumnNames(board, label) {
-        const sourceUuids = label === "Active" ? board.active_column_uuids : board.next_column_uuids;
+        const sourceUuids =
+          label === "Active" ? board.active_column_uuids : board.next_column_uuids;
         const columnsByUuid = new Map(board.columns.map((column) => [column.uuid, column.name]));
         return sourceUuids.map((uuid) => columnsByUuid.get(uuid)).filter(Boolean);
       }
@@ -750,19 +740,19 @@
           const value = select.value;
           if (value === "__selected__") {
             run(
-              (request) => request(
-                "/api/personal-cockpit/cards/toggle_selected",
-                {card_uuid: card.uuid},
-              ),
+              (request) =>
+                request("/api/personal-cockpit/cards/toggle_selected", { card_uuid: card.uuid }),
               "Updated",
             );
             return;
           }
           run(
-            (request) => request(
-              "/api/personal-cockpit/kanban/cards/move",
-              {card_uuid: card.uuid, column_uuid: value, index: 0},
-            ),
+            (request) =>
+              request("/api/personal-cockpit/kanban/cards/move", {
+                card_uuid: card.uuid,
+                column_uuid: value,
+                index: 0,
+              }),
             "Moved",
           );
         };
@@ -799,8 +789,9 @@
         button.setAttribute("aria-label", "React to differences");
         button.title = transitionLabel(card.transition);
         button.textContent = "React";
-        const events = (card.transition?.events || [card.transition])
-          .filter((event) => event && event.type !== "in_agreement");
+        const events = (card.transition?.events || [card.transition]).filter(
+          (event) => event && event.type !== "in_agreement",
+        );
         const reactions = events.map((event) => {
           const action = event.reaction || "adopt";
           const actor = transitionActorLabel(event);
@@ -843,26 +834,33 @@
           option.onclick = async (event) => {
             event.stopPropagation();
             closeReactionMenu();
-            const missing = [reaction.event.type, reaction.event.original_type]
-              .includes("peer_missing_node");
-            const endpoint = reaction.action === "rollback"
-              ? "/api/personal-cockpit/kanban/rollback"
-              : "/api/personal-cockpit/kanban/adopt";
-            await run((request) => request(endpoint, {
-              source_addr: reaction.event.peer_addr,
-              node_uuid: card.uuid,
-              adopt_absence: reaction.action === "adopt" && missing,
-              rollback_absence: reaction.action === "rollback" && missing,
-            }), reaction.action === "rollback" ? "Rolled back" : "Adopted");
+            const missing = [reaction.event.type, reaction.event.original_type].includes(
+              "peer_missing_node",
+            );
+            const endpoint =
+              reaction.action === "rollback"
+                ? "/api/personal-cockpit/kanban/rollback"
+                : "/api/personal-cockpit/kanban/adopt";
+            await run(
+              (request) =>
+                request(endpoint, {
+                  source_addr: reaction.event.peer_addr,
+                  node_uuid: card.uuid,
+                  adopt_absence: reaction.action === "adopt" && missing,
+                  rollback_absence: reaction.action === "rollback" && missing,
+                }),
+              reaction.action === "rollback" ? "Rolled back" : "Adopted",
+            );
           };
           menu.append(option);
         }
         menu.hidden = false;
         const rect = anchor.getBoundingClientRect();
         const margin = 8;
-        const left = Math.max(margin, Math.min(
-          rect.left, window.innerWidth - menu.offsetWidth - margin,
-        ));
+        const left = Math.max(
+          margin,
+          Math.min(rect.left, window.innerWidth - menu.offsetWidth - margin),
+        );
         let top = rect.bottom + 4;
         if (top + menu.offsetHeight > window.innerHeight - margin) {
           top = Math.max(margin, rect.top - menu.offsetHeight - 4);
@@ -889,9 +887,11 @@
       }
 
       function userForParticipant(participant) {
-        return (state.users || []).find((user) => [
-          user.id, user.profile_uuid, user.identity_key, user.address,
-        ].includes(participant)) || { name: "?" };
+        return (
+          (state.users || []).find((user) =>
+            [user.id, user.profile_uuid, user.identity_key, user.address].includes(participant),
+          ) || { name: "?" }
+        );
       }
 
       function cardPeople(card) {
@@ -916,7 +916,9 @@
       function personAvatar(person, owner) {
         const avatar = document.createElement("span");
         avatar.className = owner ? "participant-avatar owner" : "participant-avatar";
-        avatar.title = owner ? `${person.name || "Unknown"} (owner)` : person.name || "Unknown participant";
+        avatar.title = owner
+          ? `${person.name || "Unknown"} (owner)`
+          : person.name || "Unknown participant";
         if (person.picture) {
           avatar.style.backgroundImage = `url("${cssUrl(person.picture)}")`;
           avatar.textContent = "";
@@ -927,12 +929,14 @@
       }
 
       function initials(name) {
-        return String(name || "?")
-          .trim()
-          .split(/\s+/)
-          .slice(0, 2)
-          .map((part) => part[0]?.toUpperCase() || "")
-          .join("") || "?";
+        return (
+          String(name || "?")
+            .trim()
+            .split(/\s+/)
+            .slice(0, 2)
+            .map((part) => part[0]?.toUpperCase() || "")
+            .join("") || "?"
+        );
       }
 
       function cssUrl(value) {
@@ -940,7 +944,13 @@
       }
 
       function personFor(id) {
-        return (state.people || []).find((person) => person.id === id) || { id, name: id ? id.slice(0, 8) : "", picture: "" };
+        return (
+          (state.people || []).find((person) => person.id === id) || {
+            id,
+            name: id ? id.slice(0, 8) : "",
+            picture: "",
+          }
+        );
       }
 
       function pickerCandidates() {
@@ -1010,15 +1020,12 @@
         return submitMutation({
           key: `expanded:${board.uuid}`,
           command: "set-board-expanded",
-          arguments: {uuid: board.uuid, expanded},
-          action: (request) => request(
-            "/api/personal-cockpit/boards/settings",
-            {board_uuid: board.uuid, expanded},
-          ),
+          arguments: { uuid: board.uuid, expanded },
+          action: (request) =>
+            request("/api/personal-cockpit/boards/settings", { board_uuid: board.uuid, expanded }),
           successMessage: expanded ? "Expanded" : "Collapsed",
           project: (draft, change) => {
-            const target = (draft.boards || [])
-              .find((entry) => entry.uuid === change.uuid);
+            const target = (draft.boards || []).find((entry) => entry.uuid === change.uuid);
             if (target) target.expanded = change.expanded;
             return draft;
           },
@@ -1031,8 +1038,18 @@
         const fields = el("boardSettingsFields");
         fields.replaceChildren();
         fields.append(
-          selectField("settingsActiveColumn", "Active column", board.columns, board.active_column_uuid || ""),
-          selectField("settingsNextColumn", "Next column", board.columns, board.next_column_uuid || ""),
+          selectField(
+            "settingsActiveColumn",
+            "Active column",
+            board.columns,
+            board.active_column_uuid || "",
+          ),
+          selectField(
+            "settingsNextColumn",
+            "Next column",
+            board.columns,
+            board.next_column_uuid || "",
+          ),
         );
         const active = el("settingsActiveColumn");
         const next = el("settingsNextColumn");
@@ -1047,8 +1064,7 @@
 
       function openAgreementSettings(agreement) {
         settingsAgreement = agreement;
-        el("agreementSettingsTitle").textContent =
-          agreement.title || "Untitled agreement";
+        el("agreementSettingsTitle").textContent = agreement.title || "Untitled agreement";
         el("agreementSettingsModal").showModal();
       }
 
@@ -1082,31 +1098,30 @@
           () => {
             el("boardSettingsModal").close();
             return run(
-              (request) => request(
-                "/api/personal-cockpit/kanban/boards/delete", {
-                board_uuid: board.uuid,
-              }),
+              (request) =>
+                request("/api/personal-cockpit/kanban/boards/delete", {
+                  board_uuid: board.uuid,
+                }),
               "Board deleted",
             );
           },
         );
       };
-      el("cancelAgreementSettingsBtn").onclick = () =>
-        el("agreementSettingsModal").close();
+      el("cancelAgreementSettingsBtn").onclick = () => el("agreementSettingsModal").close();
       el("deleteAgreementBtn").onclick = () => {
         const agreement = settingsAgreement;
         if (!agreement) return;
         confirmAction(
           "Delete this agreement?",
-          "This removes the agreement and all of its sections and clauses, "
-          + "and stops sharing it. This cannot be undone.",
+          "This removes the agreement and all of its sections and clauses, " +
+            "and stops sharing it. This cannot be undone.",
           () => {
             el("agreementSettingsModal").close();
             return run(
-              (request) => request(
-                "/api/personal-cockpit/agreement/agreements/delete", {
-                agreement_uuid: agreement.uuid,
-              }),
+              (request) =>
+                request("/api/personal-cockpit/agreement/agreements/delete", {
+                  agreement_uuid: agreement.uuid,
+                }),
               "Agreement deleted",
             );
           },
@@ -1144,12 +1159,14 @@
       }
 
       function cardPerspectiveOptions(card) {
-        const options = [{
-          key: "local",
-          label: "Mine",
-          version: card,
-          absent: false,
-        }];
+        const options = [
+          {
+            key: "local",
+            label: "Mine",
+            version: card,
+            absent: false,
+          },
+        ];
         const events = card.transition?.events || (card.transition ? [card.transition] : []);
         for (const [index, version] of (card.perspectives || []).entries()) {
           const event = events.find((candidate) => {
@@ -1230,10 +1247,8 @@
         confirmAction("Delete card?", "This removes the card from its board.", () => {
           el("cardModal").close();
           return run(
-            (request) => request(
-              "/api/personal-cockpit/kanban/cards/delete",
-              {card_uuid: card.uuid},
-            ),
+            (request) =>
+              request("/api/personal-cockpit/kanban/cards/delete", { card_uuid: card.uuid }),
             "Card deleted",
           );
         });
@@ -1274,15 +1289,6 @@
               move: "/api/personal-cockpit/agreement/agenda/move",
             };
           }
-          if (app === "decision") {
-            return {
-              topicKey: "process_uuid",
-              create: "/api/personal-cockpit/decision/agenda/create",
-              delete: "/api/personal-cockpit/decision/agenda/delete",
-              setPriority: "/api/personal-cockpit/decision/agenda/set_priority",
-              move: "/api/personal-cockpit/decision/agenda/move",
-            };
-          }
           if (app === "kanban") {
             return {
               topicKey: "board_uuid",
@@ -1292,13 +1298,21 @@
               move: "/api/personal-cockpit/kanban/agenda/move",
             };
           }
+          if (app === "decision") {
+            return {
+              topicKey: "process_uuid",
+              create: "/api/personal-cockpit/decision/agenda/create",
+              delete: "/api/personal-cockpit/decision/agenda/delete",
+              setPriority: "/api/personal-cockpit/decision/agenda/set_priority",
+              move: "/api/personal-cockpit/decision/agenda/move",
+            };
+          }
           return null;
         },
-        autoAdoptRoute: () => (
+        autoAdoptRoute: () =>
           state?.selected_topic?.application_id === "kanban"
-            ? {path: "/api/personal-cockpit/kanban/auto_adopt", topicKey: "board_uuid"}
-            : null
-        ),
+            ? { path: "/api/personal-cockpit/kanban/auto_adopt", topicKey: "board_uuid" }
+            : null,
         autoAdoptLabels: AUTO_ADOPT_LABELS,
         autoAdoptDescriptions: AUTO_ADOPT_DESCRIPTIONS,
         sessionView,
@@ -1351,24 +1365,27 @@
 
       function createdecision() {
         return run(
-          (request) => request(
-            "/api/personal-cockpit/decision/processes/create",
-            {
+          (request) =>
+            request("/api/personal-cockpit/decision/processes/create", {
               title: "Untitled decision process",
               definition_id: "integrative-election",
               definition_version: "0.2.0",
-            },
-          ),
+            }),
           "Decision process created",
         );
       }
 
-      function closeAddNewMenu() { el("addNewMenu").hidden = true; }
+      function closeAddNewMenu() {
+        el("addNewMenu").hidden = true;
+      }
 
       el("addNewBtn").onclick = (event) => {
         event.stopPropagation();
         const menu = el("addNewMenu");
-        if (!menu.hidden) { closeAddNewMenu(); return; }
+        if (!menu.hidden) {
+          closeAddNewMenu();
+          return;
+        }
         menu.replaceChildren();
         for (const item of state.creatable || [{ application_id: "kanban", label: "Board" }]) {
           const choice = document.createElement("button");
@@ -1398,21 +1415,19 @@
           if (templateUuid) {
             const result = await request(
               "/api/personal-cockpit/kanban/boards/copy",
-              {board_uuid: templateUuid},
+              { board_uuid: templateUuid },
               "copy",
             );
             if (result.value) {
               await request(
                 "/api/personal-cockpit/kanban/boards/rename",
-                {board_uuid: result.value, name},
+                { board_uuid: result.value, name },
                 "rename",
               );
             }
             return result;
           }
-          return request(
-            "/api/personal-cockpit/kanban/boards/create", {name},
-          );
+          return request("/api/personal-cockpit/kanban/boards/create", { name });
         }, "Board created");
       });
 
@@ -1439,8 +1454,8 @@
       });
 
       // The shell's pane always shares the selected topic, so sharing any
-      // tile means selecting it first. Boards and agreements are both
-      // topics, so one function serves both.
+      // tile means selecting it first. Every rendered tile is a Core topic,
+      // so one function serves all source applications.
       async function openShareModal(topic) {
         if (state.selected_topic?.uuid !== topic.uuid) {
           await selectTopic(topic);
@@ -1462,7 +1477,6 @@
         const query = params.toString();
         window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
       }
-
 
       load()
         .then(openShareModalFromUrl)
@@ -1486,8 +1500,7 @@
       // selected topic's collaboration fragment, never every tile.
       setInterval(() => {
         if (!isEditingBoards()) {
-          sessionView.refresh("context")
-            .catch((error) => showToast(error.message, true));
+          sessionView.refresh("context").catch((error) => showToast(error.message, true));
         }
       }, 3000);
     </script>
