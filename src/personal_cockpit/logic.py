@@ -58,6 +58,8 @@ KANBAN_APPLICATION_ID = "kanban"
 KANBAN_FACADE_API_VERSION = 1
 AGREEMENT_APPLICATION_ID = "agreement"
 AGREEMENT_FACADE_API_VERSION = 1
+decision_APPLICATION_ID = "decision"
+decision_FACADE_API_VERSION = 1
 
 
 class FacadeLookup(Protocol):
@@ -114,6 +116,27 @@ class BoardOfBoardsLogic:
             )
         except ValueError:
             return None
+
+    def _decision(self):
+        if self.facades is None:
+            return None
+        try:
+            return self.facades.find(
+                decision_APPLICATION_ID, decision_FACADE_API_VERSION,
+            )
+        except ValueError:
+            return None
+
+    def _decision_summaries(self) -> list[dict]:
+        decision = self._decision()
+        if decision is None:
+            return []
+        summaries = []
+        for process in decision.processes():
+            summary = dict(decision.process_summary(process))
+            summary["expanded"] = False
+            summaries.append(summary)
+        return summaries
 
     def _agreement_summaries(
         self, network_by_topic: dict[str, dict] | None = None,
@@ -228,11 +251,15 @@ class BoardOfBoardsLogic:
         return SessionResult("ok", value=agreement_uuids)
 
     def _normalized_tile_order(
-        self, boards: list[dict], agreements: list[dict],
+        self,
+        boards: list[dict],
+        agreements: list[dict],
+        processes: list[dict] | None = None,
     ) -> list[str]:
         candidates = [
             *(item["uuid"] for item in boards),
             *(item["uuid"] for item in agreements),
+            *(item["uuid"] for item in (processes or [])),
         ]
         valid = set(candidates)
         stored = self._metadata().get("tile_order", [])
@@ -256,6 +283,9 @@ class BoardOfBoardsLogic:
             *(node.uuid for node in (
                 self._agreement().agreements() if self._agreement() else []
             )),
+            *(node.uuid for node in (
+                self._decision().processes() if self._decision() else []
+            )),
         }
         current = self._metadata().get("tile_order", [])
         if not isinstance(current, list):
@@ -278,13 +308,21 @@ class BoardOfBoardsLogic:
         valid = {
             *(board.uuid for board in (self._kanban().boards() if self._kanban() else [])),
             *(node.uuid for node in (agreement.agreements() if agreement else [])),
+            *(node.uuid for node in (
+                self._decision().processes() if self._decision() else []
+            )),
         }
         if topic_uuid not in valid:
             return SessionResult("error", reason="topic not found")
         self._metadata()["selected_topic_uuid"] = topic_uuid
         return SessionResult("ok", value=topic_uuid)
 
-    def _selected_topic(self, boards: list[dict], agreements: list[dict]) -> dict | None:
+    def _selected_topic(
+        self,
+        boards: list[dict],
+        agreements: list[dict],
+        processes: list[dict] | None = None,
+    ) -> dict | None:
         topics = [
             *(
                 {
@@ -301,6 +339,14 @@ class BoardOfBoardsLogic:
                     "application_id": AGREEMENT_APPLICATION_ID,
                 }
                 for agreement in agreements
+            ),
+            *(
+                {
+                    "uuid": process["uuid"],
+                    "title": process["title"],
+                    "application_id": decision_APPLICATION_ID,
+                }
+                for process in (processes or [])
             ),
         ]
         selected_uuid = self._metadata().get("selected_topic_uuid")
@@ -321,11 +367,11 @@ class BoardOfBoardsLogic:
                 "known_identities": self.session.known_identities(),
                 "identity_uuid": self.session.identity.uuid,
             }
-        facade = (
-            self._kanban()
-            if selected["application_id"] == KANBAN_APPLICATION_ID
-            else self._agreement()
-        )
+        facade = {
+            KANBAN_APPLICATION_ID: self._kanban,
+            AGREEMENT_APPLICATION_ID: self._agreement,
+            decision_APPLICATION_ID: self._decision,
+        }.get(selected["application_id"], lambda: None)()
         if not facade:
             return {}
         return (
@@ -350,13 +396,24 @@ class BoardOfBoardsLogic:
             creatable.append(
                 {"application_id": AGREEMENT_APPLICATION_ID, "label": "Agreement"}
             )
+        if self._decision() is not None:
+            creatable.append(
+                {
+                    "application_id": decision_APPLICATION_ID,
+                    "label": "Decision process",
+                }
+            )
         agreements = self._agreement_summaries(network_by_topic)
+        processes = self._decision_summaries()
         if kanban is None:
-            selected = self._selected_topic([], agreements)
+            selected = self._selected_topic([], agreements, processes)
             return {
                 "boards": [],
                 "agreements": agreements,
-                "tile_order": self._normalized_tile_order([], agreements),
+                "processes": processes,
+                "tile_order": self._normalized_tile_order(
+                    [], agreements, processes,
+                ),
                 "creatable": creatable,
                 "people": [],
                 "users": [],
@@ -389,7 +446,7 @@ class BoardOfBoardsLogic:
                 ),
             )
         ]
-        selected = self._selected_topic(boards_out, agreements)
+        selected = self._selected_topic(boards_out, agreements, processes)
         for board in boards_out:
             board["selected_topic"] = bool(
                 selected and board["uuid"] == selected["uuid"]
@@ -398,11 +455,16 @@ class BoardOfBoardsLogic:
             agreement["selected_topic"] = bool(
                 selected and agreement["uuid"] == selected["uuid"]
             )
+        for process in processes:
+            process["selected_topic"] = bool(
+                selected and process["uuid"] == selected["uuid"]
+            )
         return {
             "boards": boards_out,
             "agreements": agreements,
+            "processes": processes,
             "tile_order": self._normalized_tile_order(
-                boards_out, agreements,
+                boards_out, agreements, processes,
             ),
             "creatable": creatable,
             # Every peer this session knows about, for the card-edit modal's
@@ -439,7 +501,15 @@ class BoardOfBoardsLogic:
                 }
                 for node in (agreement.agreements() if agreement else [])
             ]
-            selected = self._selected_topic(boards, agreements)
+            decision = self._decision()
+            processes = [
+                {
+                    "uuid": node.uuid,
+                    "title": node.data.get("title", ""),
+                }
+                for node in (decision.processes() if decision else [])
+            ]
+            selected = self._selected_topic(boards, agreements, processes)
         return {
             "selected_topic": selected,
             **self._collaboration_context(
@@ -511,6 +581,15 @@ class BoardOfBoardsLogic:
                     "application_id": AGREEMENT_APPLICATION_ID,
                 }
                 for node in (agreement.agreements() if agreement else [])
+            ),
+            *(
+                {
+                    "uuid": node.uuid,
+                    "application_id": decision_APPLICATION_ID,
+                }
+                for node in (
+                    self._decision().processes() if self._decision() else []
+                )
             ),
         ]
 
@@ -1097,6 +1176,73 @@ class BoardOfBoardsLogic:
             agreement.move_agenda_item(item_uuid, index)
             if agreement else SessionResult(
                 "error", reason="Agreement application is not active",
+            )
+        )
+
+    def create_decision_process(
+        self,
+        title: str,
+        definition_id: str = "integrative-election",
+        definition_version: str = "0.2.0",
+    ) -> SessionResult:
+        decision = self._decision()
+        return (
+            decision.create_process(
+                title, definition_id, definition_version,
+            )
+            if decision else SessionResult(
+                "error", reason="S-decision application is not active",
+            )
+        )
+
+    def delete_decision_process(self, process_uuid: str) -> SessionResult:
+        decision = self._decision()
+        return (
+            decision.delete_process(process_uuid)
+            if decision else SessionResult(
+                "error", reason="S-decision application is not active",
+            )
+        )
+
+    def create_decision_agenda_item(
+        self, process_uuid: str, text: str, priority: str | None = None,
+    ) -> SessionResult:
+        decision = self._decision()
+        return (
+            decision.create_agenda_item(process_uuid, text, priority)
+            if decision else SessionResult(
+                "error", reason="S-decision application is not active",
+            )
+        )
+
+    def delete_decision_agenda_item(self, item_uuid: str) -> SessionResult:
+        decision = self._decision()
+        return (
+            decision.delete_agenda_item(item_uuid)
+            if decision else SessionResult(
+                "error", reason="S-decision application is not active",
+            )
+        )
+
+    def prioritize_decision_agenda_item(
+        self, item_uuid: str, priority: str | None,
+    ) -> SessionResult:
+        decision = self._decision()
+        return (
+            decision.set_agenda_item_priority(item_uuid, priority)
+            if decision else SessionResult(
+                "error", reason="S-decision application is not active",
+            )
+        )
+
+    def move_decision_agenda_item(
+        self, item_uuid: str, index: int,
+    ) -> SessionResult:
+        decision = self._decision()
+        return (
+            decision.move_agenda_item(item_uuid, index)
+            if decision else SessionResult(
+                "error", reason="S-decision application is not active",
             )
         )
 

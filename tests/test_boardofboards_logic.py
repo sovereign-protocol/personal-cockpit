@@ -21,15 +21,18 @@ requires_kanban = unittest.skipIf(
 
 
 class _FacadeLookup:
-    def __init__(self, kanban, agreement=None):
+    def __init__(self, kanban, agreement=None, decision=None):
         self.kanban = kanban
         self.agreement = agreement
+        self.decision = decision
 
     def find(self, application_id, facade_api_version):
         if application_id == "kanban" and facade_api_version == 1:
             return self.kanban
         if application_id == "agreement" and facade_api_version == 1:
             return self.agreement
+        if application_id == "decision" and facade_api_version == 1:
+            return self.decision
         return None
 
 
@@ -123,11 +126,92 @@ class _StubAgreementFacade:
         return self.session.move_agenda_item(item_uuid, index)
 
 
-def cockpit(runtime, agreement=None):
+class _StubdecisionFacade:
+    def __init__(self, session):
+        self.session = session
+        self.uuids = []
+
+    def create_process(
+        self, title, definition_id="integrative-election",
+        definition_version="0.2.0",
+    ):
+        result = self.session.create_child(
+            self.session.root_uuid(),
+            {
+                "type": "decision_process",
+                "title": title,
+                "definition_id": definition_id,
+                "definition_version": definition_version,
+                "lifecycle": "setup",
+                "current_stage": "Configure participants",
+            },
+            {},
+        )
+        if result.status == "ok":
+            self.uuids.append(result.value.uuid)
+            return type(result)(
+                "ok", value=result.value.uuid, effects=result.effects,
+            )
+        return result
+
+    def processes(self):
+        nodes = [self.session.protocol.index.get(uuid) for uuid in self.uuids]
+        return [node for node in nodes if node and not node.deleted]
+
+    def process_summary(self, process):
+        return {
+            "uuid": process.uuid,
+            "title": process.data["title"],
+            "application_id": "decision",
+            "definition_id": process.data["definition_id"],
+            "definition_version": process.data["definition_version"],
+            "lifecycle": process.data["lifecycle"],
+            "last_completed": "",
+            "current_stage": process.data["current_stage"],
+            "required_from_me": "Configure participants",
+            "assignment_count": 1,
+            "agenda_count": len(self.session.agenda_items(process.uuid)),
+            "content_hash": process.content_hash,
+        }
+
+    def collaboration_context(self, topic_uuid, network=None):
+        return {
+            "agenda_items": [
+                item.to_dict()
+                for item in self.session.agenda_items(topic_uuid)
+            ],
+            "transition_events": [],
+            "transition_by_node": {},
+            "identity_uuid": self.session.identity.uuid,
+            "known_identities": self.session.known_identities(),
+            "network": network or {},
+        }
+
+    def delete_process(self, process_uuid):
+        return self.session.delete(process_uuid)
+
+    def create_agenda_item(self, process_uuid, text, priority=None):
+        return self.session.create_agenda_item(
+            process_uuid, text, priority,
+        )
+
+    def delete_agenda_item(self, item_uuid):
+        return self.session.delete_agenda_item(item_uuid)
+
+    def set_agenda_item_priority(self, item_uuid, priority):
+        return self.session.set_agenda_item_priority(item_uuid, priority)
+
+    def move_agenda_item(self, item_uuid, index):
+        return self.session.move_agenda_item(item_uuid, index)
+
+
+def cockpit(runtime, agreement=None, decision=None):
     return BoardOfBoardsLogic(
         runtime.session,
         runtime.config,
-        facades=_FacadeLookup(KanbanFacade(runtime.logic), agreement),
+        facades=_FacadeLookup(
+            KanbanFacade(runtime.logic), agreement, decision,
+        ),
     )
 
 
@@ -715,6 +799,37 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
             [item.uuid for item in runtime.session.agenda_items(agreement_uuid)],
             [second.uuid, first.uuid],
         )
+
+    def test_decision_process_is_a_selectable_tile_with_core_agenda(self):
+        runtime = self.runtime(8531)
+        decision = _StubdecisionFacade(runtime.session)
+        bob = cockpit(runtime, decision=decision)
+
+        created = bob.create_decision_process(
+            "Elect secretary", "integrative-election", "0.2.0",
+        )
+        process_uuid = created.value
+        agenda = bob.create_decision_agenda_item(
+            process_uuid, "Confirm eligibility", "high",
+        )
+        selected = bob.select_topic(process_uuid)
+        payload = bob.summary_payload()
+
+        self.assertEqual(created.status, "ok")
+        self.assertEqual(agenda.status, "ok")
+        self.assertEqual(selected.status, "ok")
+        self.assertEqual(payload["selected_topic"]["uuid"], process_uuid)
+        self.assertIn(process_uuid, payload["tile_order"])
+        self.assertIn(
+            {"application_id": "decision", "label": "Decision process"},
+            payload["creatable"],
+        )
+        tile = payload["processes"][0]
+        self.assertEqual(tile["title"], "Elect secretary")
+        self.assertEqual(tile["current_stage"], "Configure participants")
+        self.assertEqual(tile["required_from_me"], "Configure participants")
+        self.assertEqual(tile["agenda_count"], 1)
+        self.assertFalse(tile["expanded"])
 
     def test_enlarging_an_agreement_carries_its_whole_document(self):
         runtime = self.runtime(8525)

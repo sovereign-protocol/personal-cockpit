@@ -127,6 +127,10 @@
           '<path d="M6 3h8l4 4v14H6z"></path>'
           + '<path d="M14 3v4h4"></path><path d="M9 13h6"></path>'
           + '<path d="M9 17h6"></path>',
+        decision:
+          '<path d="M5 4h14v16H5z"></path>'
+          + '<path d="M8 9l2 2 5-5"></path>'
+          + '<path d="M8 15h8"></path>',
       };
       const el = (id) => document.getElementById(id);
 
@@ -204,7 +208,8 @@
         const container = el("boards");
         container.replaceChildren();
         const agreements = state.agreements || [];
-        if (!state.boards.length && !agreements.length) {
+        const processes = state.processes || [];
+        if (!state.boards.length && !agreements.length && !processes.length) {
           const empty = document.createElement("p");
           empty.className = "bob-empty";
           empty.textContent = "Nothing yet - use “+ Add new”.";
@@ -220,7 +225,9 @@
           container.append(
             tile.application_id === "agreement"
               ? renderExpandedAgreement(tile, index, expanded.length)
-              : renderExpandedBoard(tile, index, expanded.length),
+              : tile.application_id === "decision"
+                ? renderdecisionTile(tile, index, expanded.length)
+                : renderExpandedBoard(tile, index, expanded.length),
           );
         });
         chunk(collapsed, 5).forEach((group, chunkIndex) => {
@@ -232,9 +239,11 @@
                 ? renderAgreementTile(
                     tile, chunkIndex * 5 + i, collapsed.length,
                   )
-                : renderCollapsedBoard(
-                    tile, chunkIndex * 5 + i, collapsed.length,
-                  ),
+                : tile.application_id === "decision"
+                  ? renderdecisionTile(tile, chunkIndex * 5 + i, collapsed.length)
+                  : renderCollapsedBoard(
+                      tile, chunkIndex * 5 + i, collapsed.length,
+                    ),
             ),
           );
           container.append(lane);
@@ -254,7 +263,9 @@
         link.textContent = topic.title;
         link.href = topic.application_id === "agreement"
           ? `/apps/agreement?agreement=${encodeURIComponent(topic.uuid)}`
-          : `/apps/kanban?board=${encodeURIComponent(topic.uuid)}`;
+          : topic.application_id === "decision"
+            ? `/apps/decision?process_uuid=${encodeURIComponent(topic.uuid)}`
+            : `/apps/kanban?board=${encodeURIComponent(topic.uuid)}`;
         SovereignShell.setTopicRegion(link);
       }
 
@@ -276,7 +287,9 @@
           project: (draft, nextTopic) => {
             draft.selected_topic = nextTopic;
             for (const entry of [
-              ...(draft.boards || []), ...(draft.agreements || []),
+              ...(draft.boards || []),
+              ...(draft.agreements || []),
+              ...(draft.processes || []),
             ]) {
               entry.selected_topic = entry.uuid === nextTopic.uuid;
             }
@@ -303,6 +316,7 @@
         return [
           ...(state.boards || []),
           ...(state.agreements || []),
+          ...(state.processes || []),
         ].sort((left, right) =>
           (order.get(left.uuid) ?? Number.MAX_SAFE_INTEGER)
           - (order.get(right.uuid) ?? Number.MAX_SAFE_INTEGER)
@@ -334,6 +348,50 @@
         tile.className = "bob-board collapsed bob-agreement-tile";
         makeTopicSelectable(tile, agreement);
         tile.append(agreementHeader(agreement, index, total));
+        return tile;
+      }
+
+      function renderdecisionTile(process, index, total) {
+        const tile = document.createElement("section");
+        tile.className = "bob-board collapsed bob-decision-tile";
+        makeTopicSelectable(tile, process);
+
+        const header = document.createElement("div");
+        header.className = "bob-board-header";
+        const main = document.createElement("div");
+        main.className = "bob-board-main";
+        main.append(topicTitle(
+          "decision",
+          process.title || "Untitled decision process",
+          `/apps/decision?process_uuid=${encodeURIComponent(process.uuid)}`,
+        ));
+        const stage = document.createElement("p");
+        stage.className = "bob-decision-stage";
+        stage.textContent = process.current_stage
+          ? `Now: ${process.current_stage}`
+          : process.lifecycle;
+        const required = document.createElement("p");
+        required.className = "bob-decision-required";
+        required.textContent = process.required_from_me || "Wait";
+        main.append(stage, required);
+        header.append(main);
+
+        const tools = document.createElement("div");
+        tools.className = "bob-board-tools";
+        const controls = document.createElement("div");
+        controls.className = "bob-board-controls";
+        controls.append(moveButton("<", index === 0, () => moveTile(process, -1)));
+        controls.append(moveButton(">", index >= total - 1, () => moveTile(process, 1)));
+        controls.append(iconButton(ICON_SHARE, "Share", () => openShareModal(process)));
+        const status = document.createElement("div");
+        status.className = "bob-board-status";
+        status.append(
+          statItem(process.assignment_count, "people"),
+          statItem(process.agenda_count, "agenda"),
+        );
+        tools.append(controls, status);
+        header.append(tools);
+        tile.append(header);
         return tile;
       }
 
@@ -1204,6 +1262,15 @@
               move: "/api/personal-cockpit/agreement/agenda/move",
             };
           }
+          if (app === "decision") {
+            return {
+              topicKey: "process_uuid",
+              create: "/api/personal-cockpit/decision/agenda/create",
+              delete: "/api/personal-cockpit/decision/agenda/delete",
+              setPriority: "/api/personal-cockpit/decision/agenda/set_priority",
+              move: "/api/personal-cockpit/decision/agenda/move",
+            };
+          }
           if (app === "kanban") {
             return {
               topicKey: "board_uuid",
@@ -1259,6 +1326,20 @@
         );
       }
 
+      function createdecision() {
+        return run(
+          (request) => request(
+            "/api/personal-cockpit/decision/processes/create",
+            {
+              title: "Untitled decision process",
+              definition_id: "integrative-election",
+              definition_version: "0.2.0",
+            },
+          ),
+          "Decision process created",
+        );
+      }
+
       function closeAddNewMenu() { el("addNewMenu").hidden = true; }
 
       el("addNewBtn").onclick = (event) => {
@@ -1273,6 +1354,7 @@
           choice.onclick = () => {
             closeAddNewMenu();
             if (item.application_id === "agreement") createAgreement();
+            else if (item.application_id === "decision") createdecision();
             else openNewBoardModal();
           };
           menu.append(choice);
@@ -1325,8 +1407,11 @@
         const params = new URLSearchParams(window.location.search);
         const topicUuid = params.get("share");
         if (!topicUuid) return;
-        const topic = [...(state.boards || []), ...(state.agreements || [])]
-          .find((entry) => entry.uuid === topicUuid);
+        const topic = [
+          ...(state.boards || []),
+          ...(state.agreements || []),
+          ...(state.processes || []),
+        ].find((entry) => entry.uuid === topicUuid);
         if (topic) await openShareModal(topic);
         params.delete("share");
         const query = params.toString();

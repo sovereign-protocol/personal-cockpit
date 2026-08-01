@@ -33,7 +33,7 @@ so this still opens when one is absent.
 ### Building the combined executable
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e ../s-kanban -e ../s-agreement pyinstaller
+.\.venv\Scripts\python.exe -m pip install -e ../s-kanban -e ../s-agreement -e ../s-decision pyinstaller
 .\.venv\Scripts\pyinstaller.exe Sovereign.spec
 ```
 
