@@ -256,7 +256,13 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_application_host_supplies_live_kanban_facade(self):
         directory = tempfile.TemporaryDirectory()
-        config = app_server.load_config(None, "boardofboards")
+        # Not load_config(): it searches the working directory for
+        # `boardofboards_config.json`, so running this suite from the
+        # repository root silently mounts every application that file lists -
+        # including S-Team and S-Flow, which this package does not depend on
+        # and CI does not install. The alias is what this test is about.
+        config = dict(app_server.DEFAULT_CONFIG)
+        config.update(app_server.app_default_config("boardofboards"))
         config["storage_file"] = str(Path(directory.name) / "cockpit.json")
         runtime = app_server.create_runtime(8498, config)
         runtime._test_tmp = directory

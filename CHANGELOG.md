@@ -1,7 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.1.0a3 - 2026-08-01
 
+- Renamed from Personal Cockpit to **S-Cockpit**, distributed as
+  `sovereign-cockpit`. The application id is now `cockpit`, routes are served
+  under `/api/cockpit/`, and the Python package is `s_cockpit`. Its source
+  adapters follow the applications they read: `initiative`, `team` and `flow`.
+- **Fixed: one test mounted whatever the working directory happened to
+  configure.** `load_config(None, "boardofboards")` searches the current
+  directory for `boardofboards_config.json`, so running the suite from the
+  repository root pulled in S-Team and S-Flow — applications this package does
+  not depend on and CI does not install. The test now builds its config from
+  the alias, which is what it was about.
 - The Cockpit name shown in the shared header can be customized with
   `header_title` in the JSON configuration, including in browser clients.
 
