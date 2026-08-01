@@ -83,6 +83,18 @@
     </dialog>
 
 
+    <dialog id="newAgreementModal">
+      <form method="dialog" id="newAgreementForm">
+        <h2>New agreement</h2>
+        <label>Name<input id="newAgreementName" value="Untitled agreement" /></label>
+        <label>Copy from (optional)<select id="newAgreementTemplate"></select></label>
+        <menu>
+          <button type="button" id="cancelNewAgreementBtn">Cancel</button>
+          <button type="submit" class="primary">Create</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="confirmModal">
       <h2 id="confirmModalTitle">Action</h2>
       <p id="confirmModalMessage" class="confirm-text"></p>
@@ -1316,14 +1328,25 @@
         el("newBoardModal").showModal();
       }
 
-      function createAgreement() {
-        return run(
-          (request) => request(
-            "/api/personal-cockpit/agreement/agreements/create",
-            {title: "Untitled agreement"},
-          ),
-          "Agreement created",
-        );
+      // Copying an agreement is choosing where a new one starts, so it lives
+      // in the flow that makes one - the same modal shape a new board uses.
+      // An agreement copied this way arrives with the text and the roles and
+      // nobody in it, which is what a template is.
+      function openNewAgreementModal() {
+        el("newAgreementName").value = "Untitled agreement";
+        const select = el("newAgreementTemplate");
+        select.replaceChildren();
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "Start empty";
+        select.append(empty);
+        for (const agreement of state.agreements || []) {
+          const opt = document.createElement("option");
+          opt.value = agreement.uuid;
+          opt.textContent = agreement.title || "Untitled agreement";
+          select.append(opt);
+        }
+        el("newAgreementModal").showModal();
       }
 
       function createdecision() {
@@ -1353,7 +1376,7 @@
           choice.textContent = item.label;
           choice.onclick = () => {
             closeAddNewMenu();
-            if (item.application_id === "agreement") createAgreement();
+            if (item.application_id === "agreement") openNewAgreementModal();
             else if (item.application_id === "decision") createdecision();
             else openNewBoardModal();
           };
@@ -1391,6 +1414,28 @@
             "/api/personal-cockpit/kanban/boards/create", {name},
           );
         }, "Board created");
+      });
+
+      el("cancelNewAgreementBtn").onclick = () => el("newAgreementModal").close();
+      el("newAgreementForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const title = el("newAgreementName").value || "Untitled agreement";
+        const templateUuid = el("newAgreementTemplate").value;
+        el("newAgreementModal").close();
+        // One request either way: clone takes the title, so unlike a board
+        // copy there is nothing to rename afterwards.
+        run(
+          (request) =>
+            templateUuid
+              ? request("/api/personal-cockpit/agreement/agreements/clone", {
+                  agreement_uuid: templateUuid,
+                  title,
+                })
+              : request("/api/personal-cockpit/agreement/agreements/create", {
+                  title,
+                }),
+          "Agreement created",
+        );
       });
 
       // The shell's pane always shares the selected topic, so sharing any

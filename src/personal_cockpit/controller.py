@@ -185,6 +185,14 @@ def build_routes(logic, runtime) -> list[Route]:
             lambda: logic.create_agreement(data.get("title", "")),
         )
 
+    async def api_clone_agreement(request: Request):
+        data = await request.json()
+        return await _mutation_result(
+            runtime, data, lambda: logic.clone_agreement(
+                data["agreement_uuid"], data.get("title"),
+            ),
+        )
+
     async def api_delete_agreement(request: Request):
         data = await request.json()
         return await _mutation_result(
@@ -323,6 +331,8 @@ def build_routes(logic, runtime) -> list[Route]:
               methods=["POST"]),
         Route("/api/personal-cockpit/agreement/agreements/create",
               api_create_agreement, methods=["POST"]),
+        Route("/api/personal-cockpit/agreement/agreements/clone",
+              api_clone_agreement, methods=["POST"]),
         Route("/api/personal-cockpit/agreement/agreements/delete",
               api_delete_agreement, methods=["POST"]),
         Route("/api/personal-cockpit/agreement/agenda/create",

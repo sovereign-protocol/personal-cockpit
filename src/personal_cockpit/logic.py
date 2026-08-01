@@ -1127,6 +1127,18 @@ class BoardOfBoardsLogic:
             )
         )
 
+    def clone_agreement(
+        self, agreement_uuid: str, title: str | None = None,
+    ) -> SessionResult:
+        """Start a new agreement from an existing one, as a board copy does."""
+        agreement = self._agreement()
+        return (
+            agreement.clone_agreement(agreement_uuid, title)
+            if agreement else SessionResult(
+                "error", reason="Agreement application is not active",
+            )
+        )
+
     def delete_agreement(self, agreement_uuid: str) -> SessionResult:
         agreement = self._agreement()
         return (
