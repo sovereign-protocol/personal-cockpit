@@ -228,54 +228,54 @@ def build_routes(logic, runtime) -> list[Route]:
             data["item_uuid"], int(data.get("index", 0)),
         ))
 
-    async def api_create_decision_process(request: Request):
+    async def api_create_flow_process(request: Request):
         data = await request.json()
         return await _mutation_result(
-            runtime, data, lambda: logic.create_decision_process(
-                data.get("title", "Untitled decision process"),
+            runtime, data, lambda: logic.create_flow_process(
+                data.get("title", "Untitled process"),
                 data.get("definition_id", "integrative-election"),
                 data.get("definition_version", "0.2.0"),
             ),
         )
 
-    async def api_delete_decision_process(request: Request):
+    async def api_delete_flow_process(request: Request):
         data = await request.json()
         return await _mutation_result(
             runtime, data,
-            lambda: logic.delete_decision_process(data["process_uuid"]),
+            lambda: logic.delete_flow_process(data["process_uuid"]),
         )
 
-    async def api_create_decision_agenda(request: Request):
+    async def api_create_flow_agenda(request: Request):
         data = await request.json()
         return await _mutation_result(
-            runtime, data, lambda: logic.create_decision_agenda_item(
+            runtime, data, lambda: logic.create_flow_agenda_item(
                 data["process_uuid"],
                 data.get("text", ""),
                 data.get("priority"),
             ),
         )
 
-    async def api_delete_decision_agenda(request: Request):
+    async def api_delete_flow_agenda(request: Request):
         data = await request.json()
         return await _mutation_result(
             runtime, data,
-            lambda: logic.delete_decision_agenda_item(data["item_uuid"]),
+            lambda: logic.delete_flow_agenda_item(data["item_uuid"]),
         )
 
-    async def api_prioritize_decision_agenda(request: Request):
+    async def api_prioritize_flow_agenda(request: Request):
         data = await request.json()
         return await _mutation_result(
             runtime, data,
-            lambda: logic.prioritize_decision_agenda_item(
+            lambda: logic.prioritize_flow_agenda_item(
                 data["item_uuid"], data.get("priority"),
             ),
         )
 
-    async def api_move_decision_agenda(request: Request):
+    async def api_move_flow_agenda(request: Request):
         data = await request.json()
         return await _mutation_result(
             runtime, data,
-            lambda: logic.move_decision_agenda_item(
+            lambda: logic.move_flow_agenda_item(
                 data["item_uuid"], int(data.get("index", 0)),
             ),
         )
@@ -343,18 +343,18 @@ def build_routes(logic, runtime) -> list[Route]:
               api_prioritize_agreement_agenda, methods=["POST"]),
         Route("/api/personal-cockpit/agreement/agenda/move",
               api_move_agreement_agenda, methods=["POST"]),
-        Route("/api/personal-cockpit/decision/processes/create",
-              api_create_decision_process, methods=["POST"]),
-        Route("/api/personal-cockpit/decision/processes/delete",
-              api_delete_decision_process, methods=["POST"]),
-        Route("/api/personal-cockpit/decision/agenda/create",
-              api_create_decision_agenda, methods=["POST"]),
-        Route("/api/personal-cockpit/decision/agenda/delete",
-              api_delete_decision_agenda, methods=["POST"]),
-        Route("/api/personal-cockpit/decision/agenda/set_priority",
-              api_prioritize_decision_agenda, methods=["POST"]),
-        Route("/api/personal-cockpit/decision/agenda/move",
-              api_move_decision_agenda, methods=["POST"]),
+        Route("/api/personal-cockpit/flow/processes/create",
+              api_create_flow_process, methods=["POST"]),
+        Route("/api/personal-cockpit/flow/processes/delete",
+              api_delete_flow_process, methods=["POST"]),
+        Route("/api/personal-cockpit/flow/agenda/create",
+              api_create_flow_agenda, methods=["POST"]),
+        Route("/api/personal-cockpit/flow/agenda/delete",
+              api_delete_flow_agenda, methods=["POST"]),
+        Route("/api/personal-cockpit/flow/agenda/set_priority",
+              api_prioritize_flow_agenda, methods=["POST"]),
+        Route("/api/personal-cockpit/flow/agenda/move",
+              api_move_flow_agenda, methods=["POST"]),
     ]
 
 

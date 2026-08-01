@@ -21,18 +21,18 @@ requires_kanban = unittest.skipIf(
 
 
 class _FacadeLookup:
-    def __init__(self, kanban, agreement=None, decision=None):
+    def __init__(self, kanban, agreement=None, flow=None):
         self.kanban = kanban
         self.agreement = agreement
-        self.decision = decision
+        self.flow = flow
 
     def find(self, application_id, facade_api_version):
         if application_id == "kanban" and facade_api_version == 1:
             return self.kanban
         if application_id == "agreement" and facade_api_version == 1:
             return self.agreement
-        if application_id == "decision" and facade_api_version == 1:
-            return self.decision
+        if application_id == "flow" and facade_api_version == 1:
+            return self.flow
         return None
 
 
@@ -126,7 +126,7 @@ class _StubAgreementFacade:
         return self.session.move_agenda_item(item_uuid, index)
 
 
-class _StubdecisionFacade:
+class _StubFlowFacade:
     def __init__(self, session):
         self.session = session
         self.uuids = []
@@ -138,7 +138,7 @@ class _StubdecisionFacade:
         result = self.session.create_child(
             self.session.root_uuid(),
             {
-                "type": "decision_process",
+                "type": "flow_process",
                 "title": title,
                 "definition_id": definition_id,
                 "definition_version": definition_version,
@@ -162,7 +162,7 @@ class _StubdecisionFacade:
         return {
             "uuid": process.uuid,
             "title": process.data["title"],
-            "application_id": "decision",
+            "application_id": "flow",
             "definition_id": process.data["definition_id"],
             "definition_version": process.data["definition_version"],
             "lifecycle": process.data["lifecycle"],
@@ -205,12 +205,12 @@ class _StubdecisionFacade:
         return self.session.move_agenda_item(item_uuid, index)
 
 
-def cockpit(runtime, agreement=None, decision=None):
+def cockpit(runtime, agreement=None, flow=None):
     return BoardOfBoardsLogic(
         runtime.session,
         runtime.config,
         facades=_FacadeLookup(
-            KanbanFacade(runtime.logic), agreement, decision,
+            KanbanFacade(runtime.logic), agreement, flow,
         ),
     )
 
@@ -800,16 +800,16 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
             [second.uuid, first.uuid],
         )
 
-    def test_decision_process_is_a_selectable_tile_with_core_agenda(self):
+    def test_flow_process_is_a_selectable_tile_with_core_agenda(self):
         runtime = self.runtime(8531)
-        decision = _StubdecisionFacade(runtime.session)
-        bob = cockpit(runtime, decision=decision)
+        flow = _StubFlowFacade(runtime.session)
+        bob = cockpit(runtime, flow=flow)
 
-        created = bob.create_decision_process(
+        created = bob.create_flow_process(
             "Elect secretary", "integrative-election", "0.2.0",
         )
         process_uuid = created.value
-        agenda = bob.create_decision_agenda_item(
+        agenda = bob.create_flow_agenda_item(
             process_uuid, "Confirm eligibility", "high",
         )
         selected = bob.select_topic(process_uuid)
@@ -821,7 +821,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertEqual(payload["selected_topic"]["uuid"], process_uuid)
         self.assertIn(process_uuid, payload["tile_order"])
         self.assertIn(
-            {"application_id": "decision", "label": "Decision process"},
+            {"application_id": "flow", "label": "Process"},
             payload["creatable"],
         )
         tile = payload["processes"][0]

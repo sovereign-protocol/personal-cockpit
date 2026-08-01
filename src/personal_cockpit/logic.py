@@ -58,8 +58,8 @@ KANBAN_APPLICATION_ID = "kanban"
 KANBAN_FACADE_API_VERSION = 1
 AGREEMENT_APPLICATION_ID = "agreement"
 AGREEMENT_FACADE_API_VERSION = 1
-decision_APPLICATION_ID = "decision"
-decision_FACADE_API_VERSION = 1
+FLOW_APPLICATION_ID = "flow"
+FLOW_FACADE_API_VERSION = 1
 
 
 class FacadeLookup(Protocol):
@@ -117,23 +117,23 @@ class BoardOfBoardsLogic:
         except ValueError:
             return None
 
-    def _decision(self):
+    def _flow(self):
         if self.facades is None:
             return None
         try:
             return self.facades.find(
-                decision_APPLICATION_ID, decision_FACADE_API_VERSION,
+                FLOW_APPLICATION_ID, FLOW_FACADE_API_VERSION,
             )
         except ValueError:
             return None
 
-    def _decision_summaries(self) -> list[dict]:
-        decision = self._decision()
-        if decision is None:
+    def _flow_summaries(self) -> list[dict]:
+        flow = self._flow()
+        if flow is None:
             return []
         summaries = []
-        for process in decision.processes():
-            summary = dict(decision.process_summary(process))
+        for process in flow.processes():
+            summary = dict(flow.process_summary(process))
             summary["expanded"] = False
             summaries.append(summary)
         return summaries
@@ -284,7 +284,7 @@ class BoardOfBoardsLogic:
                 self._agreement().agreements() if self._agreement() else []
             )),
             *(node.uuid for node in (
-                self._decision().processes() if self._decision() else []
+                self._flow().processes() if self._flow() else []
             )),
         }
         current = self._metadata().get("tile_order", [])
@@ -309,7 +309,7 @@ class BoardOfBoardsLogic:
             *(board.uuid for board in (self._kanban().boards() if self._kanban() else [])),
             *(node.uuid for node in (agreement.agreements() if agreement else [])),
             *(node.uuid for node in (
-                self._decision().processes() if self._decision() else []
+                self._flow().processes() if self._flow() else []
             )),
         }
         if topic_uuid not in valid:
@@ -344,7 +344,7 @@ class BoardOfBoardsLogic:
                 {
                     "uuid": process["uuid"],
                     "title": process["title"],
-                    "application_id": decision_APPLICATION_ID,
+                    "application_id": FLOW_APPLICATION_ID,
                 }
                 for process in (processes or [])
             ),
@@ -370,7 +370,7 @@ class BoardOfBoardsLogic:
         facade = {
             KANBAN_APPLICATION_ID: self._kanban,
             AGREEMENT_APPLICATION_ID: self._agreement,
-            decision_APPLICATION_ID: self._decision,
+            FLOW_APPLICATION_ID: self._flow,
         }.get(selected["application_id"], lambda: None)()
         if not facade:
             return {}
@@ -396,15 +396,15 @@ class BoardOfBoardsLogic:
             creatable.append(
                 {"application_id": AGREEMENT_APPLICATION_ID, "label": "Agreement"}
             )
-        if self._decision() is not None:
+        if self._flow() is not None:
             creatable.append(
                 {
-                    "application_id": decision_APPLICATION_ID,
-                    "label": "Decision process",
+                    "application_id": FLOW_APPLICATION_ID,
+                    "label": "Process",
                 }
             )
         agreements = self._agreement_summaries(network_by_topic)
-        processes = self._decision_summaries()
+        processes = self._flow_summaries()
         if kanban is None:
             selected = self._selected_topic([], agreements, processes)
             return {
@@ -501,13 +501,13 @@ class BoardOfBoardsLogic:
                 }
                 for node in (agreement.agreements() if agreement else [])
             ]
-            decision = self._decision()
+            flow = self._flow()
             processes = [
                 {
                     "uuid": node.uuid,
                     "title": node.data.get("title", ""),
                 }
-                for node in (decision.processes() if decision else [])
+                for node in (flow.processes() if flow else [])
             ]
             selected = self._selected_topic(boards, agreements, processes)
         return {
@@ -585,10 +585,10 @@ class BoardOfBoardsLogic:
             *(
                 {
                     "uuid": node.uuid,
-                    "application_id": decision_APPLICATION_ID,
+                    "application_id": FLOW_APPLICATION_ID,
                 }
                 for node in (
-                    self._decision().processes() if self._decision() else []
+                    self._flow().processes() if self._flow() else []
                 )
             ),
         ]
@@ -1191,70 +1191,70 @@ class BoardOfBoardsLogic:
             )
         )
 
-    def create_decision_process(
+    def create_flow_process(
         self,
         title: str,
         definition_id: str = "integrative-election",
         definition_version: str = "0.2.0",
     ) -> SessionResult:
-        decision = self._decision()
+        flow = self._flow()
         return (
-            decision.create_process(
+            flow.create_process(
                 title, definition_id, definition_version,
             )
-            if decision else SessionResult(
-                "error", reason="S-decision application is not active",
+            if flow else SessionResult(
+                "error", reason="S-Flow application is not active",
             )
         )
 
-    def delete_decision_process(self, process_uuid: str) -> SessionResult:
-        decision = self._decision()
+    def delete_flow_process(self, process_uuid: str) -> SessionResult:
+        flow = self._flow()
         return (
-            decision.delete_process(process_uuid)
-            if decision else SessionResult(
-                "error", reason="S-decision application is not active",
+            flow.delete_process(process_uuid)
+            if flow else SessionResult(
+                "error", reason="S-Flow application is not active",
             )
         )
 
-    def create_decision_agenda_item(
+    def create_flow_agenda_item(
         self, process_uuid: str, text: str, priority: str | None = None,
     ) -> SessionResult:
-        decision = self._decision()
+        flow = self._flow()
         return (
-            decision.create_agenda_item(process_uuid, text, priority)
-            if decision else SessionResult(
-                "error", reason="S-decision application is not active",
+            flow.create_agenda_item(process_uuid, text, priority)
+            if flow else SessionResult(
+                "error", reason="S-Flow application is not active",
             )
         )
 
-    def delete_decision_agenda_item(self, item_uuid: str) -> SessionResult:
-        decision = self._decision()
+    def delete_flow_agenda_item(self, item_uuid: str) -> SessionResult:
+        flow = self._flow()
         return (
-            decision.delete_agenda_item(item_uuid)
-            if decision else SessionResult(
-                "error", reason="S-decision application is not active",
+            flow.delete_agenda_item(item_uuid)
+            if flow else SessionResult(
+                "error", reason="S-Flow application is not active",
             )
         )
 
-    def prioritize_decision_agenda_item(
+    def prioritize_flow_agenda_item(
         self, item_uuid: str, priority: str | None,
     ) -> SessionResult:
-        decision = self._decision()
+        flow = self._flow()
         return (
-            decision.set_agenda_item_priority(item_uuid, priority)
-            if decision else SessionResult(
-                "error", reason="S-decision application is not active",
+            flow.set_agenda_item_priority(item_uuid, priority)
+            if flow else SessionResult(
+                "error", reason="S-Flow application is not active",
             )
         )
 
-    def move_decision_agenda_item(
+    def move_flow_agenda_item(
         self, item_uuid: str, index: int,
     ) -> SessionResult:
-        decision = self._decision()
+        flow = self._flow()
         return (
-            decision.move_agenda_item(item_uuid, index)
-            if decision else SessionResult(
-                "error", reason="S-decision application is not active",
+            flow.move_agenda_item(item_uuid, index)
+            if flow else SessionResult(
+                "error", reason="S-Flow application is not active",
             )
         )
 

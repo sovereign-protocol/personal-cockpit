@@ -855,7 +855,7 @@ button,
   font-weight: 600;
 }
 
-.bob-decision-tile .bob-board-title {
+.bob-flow-tile .bob-board-title {
   align-self: flex-start;
   flex: 0 0 auto;
   max-width: 100%;
@@ -863,14 +863,14 @@ button,
   font-weight: 600;
 }
 
-.bob-decision-stage,
-.bob-decision-required {
+.bob-flow-stage,
+.bob-flow-required {
   margin: 0.35rem 0 0;
   color: #8b949e;
   font-size: 0.82rem;
 }
 
-.bob-decision-required {
+.bob-flow-required {
   color: #7ee2b8;
   font-weight: 600;
 }

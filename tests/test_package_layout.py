@@ -22,7 +22,7 @@ import sovereign
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = sorted((ROOT / "src").rglob("*.py"))
-OTHER_APPLICATIONS = ("s_agreement", "s_decision", "s_kanban")
+OTHER_APPLICATIONS = ("s_agreement", "s_flow", "s_kanban")
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -233,12 +233,12 @@ class AssetTests(unittest.TestCase):
 
     def test_cross_application_links_name_the_target_asset_prefix(self):
         self.assertIn("/apps/kanban?board=", self.cockpit)
-        self.assertIn("/apps/decision?process_uuid=", self.cockpit)
+        self.assertIn("/apps/flow?process_uuid=", self.cockpit)
 
     def test_assets_do_not_call_producer_controller_namespaces(self):
         self.assertNotIn("/api/kanban", self.cockpit)
         self.assertNotIn("/api/agreement", self.cockpit)
-        self.assertNotIn("/api/decision", self.cockpit)
+        self.assertNotIn("/api/flow", self.cockpit)
 
     def test_cockpit_renders_one_application_identified_tile_stream(self):
         self.assertIn("tilesInDisplayOrder()", self.cockpit)

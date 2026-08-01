@@ -2,7 +2,7 @@
   "applications": [
     { "module": "s_kanban.application" },
     { "module": "s_agreement.application" },
-    { "module": "s_decision.application" },
+    { "module": "s_flow.application" },
     { "module": "personal_cockpit.application" }
   ],
   "primary_application_id": "personal-cockpit"
