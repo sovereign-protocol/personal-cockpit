@@ -33,7 +33,7 @@
 - Agreement agenda items can now be reordered from the Cockpit, using the same
   drag interaction as Kanban agenda items.
 - All producer mutations now cross versioned Kanban/Agreement facades through
-  Personal Cockpit-owned controller routes; the UI no longer calls producer
+  S-Cockpit-owned controller routes; the UI no longer calls producer
   HTTP namespaces.
 - Local portfolio state now uses its Session application metadata namespace.
 - Core retired the direct HTTP channel. No production change was needed here
@@ -55,4 +55,4 @@
   already did, instead of jumping into the new document.
 - Board tiles show their agenda-item count beside the divergence count, and
   name divergences as such rather than as "discussion".
-- Initial standalone Personal Cockpit with optional S-Kanban facade adapter.
+- Initial standalone S-Cockpit with optional S-Initiative facade adapter.

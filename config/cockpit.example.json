@@ -1,0 +1,8 @@
+{
+  "applications": [
+    {"module": "s_cockpit.application"}
+  ],
+  "primary_application_id": "cockpit",
+  "header_title": "S-Cockpit",
+  "advertise_host": "127.0.0.1"
+}

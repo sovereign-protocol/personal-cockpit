@@ -3,9 +3,9 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "personal-cockpit"
+name = "sovereign-cockpit"
 version = "0.1.0a2"
-description = "Personal Cockpit cross-application view for Sovereign Core"
+description = "S-Cockpit cross-application view for Sovereign Core"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -24,34 +24,34 @@ dependencies = ["sovereign-protocol>=0.1.6,<0.2"]
 
 # A package whose argument is auditability must say where its source is.
 [project.urls]
-Homepage = "https://github.com/sovereign-protocol/personal-cockpit"
-Source = "https://github.com/sovereign-protocol/personal-cockpit"
-Issues = "https://github.com/sovereign-protocol/personal-cockpit/issues"
+Homepage = "https://github.com/sovereign-protocol/s-cockpit"
+Source = "https://github.com/sovereign-protocol/s-cockpit"
+Issues = "https://github.com/sovereign-protocol/s-cockpit/issues"
 
 [project.optional-dependencies]
-# S-Kanban is deliberately not here. A5 makes it an optional producer, so the
+# S-Initiative is deliberately not here. A5 makes it an optional producer, so the
 # suite must install and run without it - the tests that need it skip. Putting
 # it back would make an optional dependency mandatory to test, and would block
-# this repository's CI on S-Kanban existing at an index.
+# this repository's CI on S-Initiative existing at an index.
 test = ["pytest>=8,<10"]
 # Adds the tests that exercise the Kanban facade.
-test-kanban = ["pytest>=8,<10", "s-kanban>=0.1.0a1,<0.2"]
+test-kanban = ["pytest>=8,<10", "sovereign-initiative>=0.1.0a1,<0.2"]
 # The window only. Everything else works headless, so this stays optional and
 # the launcher explains the install when it is missing.
 desktop = ["pywebview>=5,<6"]
 
 [project.scripts]
-sovereign-desktop = "personal_cockpit.desktop:main"
+sovereign-desktop = "s_cockpit.desktop:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["personal_cockpit*"]
+include = ["s_cockpit*"]
 
 [tool.setuptools.package-data]
-"personal_cockpit.assets" = ["*.css", "*.html", "*.js"]
+"s_cockpit.assets" = ["*.css", "*.html", "*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

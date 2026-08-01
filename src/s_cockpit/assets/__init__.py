@@ -1,0 +1,1 @@
+"""S-Cockpit browser assets."""

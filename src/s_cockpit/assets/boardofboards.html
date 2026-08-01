@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Personal Overview</title>
     <link rel="stylesheet" href="/shared.css" />
-    <link rel="stylesheet" href="/apps/personal-cockpit/styles.css" />
+    <link rel="stylesheet" href="/apps/cockpit/styles.css" />
   </head>
   <body>
     <div id="toast" class="toast"></div>
@@ -147,10 +147,10 @@
       const sessionView = SovereignSessionView.create({ request: api });
       sessionView
         .defineView("tiles", {
-          load: () => api("/api/personal-cockpit/tiles"),
+          load: () => api("/api/cockpit/tiles"),
         })
         .defineView("context", {
-          load: () => api("/api/personal-cockpit/context"),
+          load: () => api("/api/cockpit/context"),
         });
       sessionView.subscribe((nextState, _pending, event) => {
         state = nextState;
@@ -264,10 +264,10 @@
         link.textContent = topic.title;
         link.href =
           topic.application_id === "agreement"
-            ? `/apps/agreement?agreement=${encodeURIComponent(topic.uuid)}`
+            ? `/apps/team?agreement=${encodeURIComponent(topic.uuid)}`
             : topic.application_id === "flow"
               ? `/apps/flow?process_uuid=${encodeURIComponent(topic.uuid)}`
-              : `/apps/kanban?board=${encodeURIComponent(topic.uuid)}`;
+              : `/apps/initiative?board=${encodeURIComponent(topic.uuid)}`;
         SovereignShell.setTopicRegion(link);
       }
 
@@ -283,7 +283,7 @@
           command: "select-topic",
           arguments: selected,
           action: (request) =>
-            request("/api/personal-cockpit/topics/select", {
+            request("/api/cockpit/topics/select", {
               topic_uuid: topic.uuid,
             }),
           successMessage: `${topic.title || topic.name} selected`,
@@ -417,7 +417,7 @@
         const title = topicTitle(
           "agreement",
           agreement.title || "Untitled agreement",
-          `/apps/agreement?agreement=${encodeURIComponent(agreement.uuid)}`,
+          `/apps/team?agreement=${encodeURIComponent(agreement.uuid)}`,
         );
         main.append(title);
         header.append(main);
@@ -490,7 +490,7 @@
           command: "set-agreement-expanded",
           arguments: { uuid: agreement.uuid, expanded },
           action: (request) =>
-            request("/api/personal-cockpit/agreements/settings", {
+            request("/api/cockpit/agreements/settings", {
               agreement_uuid: agreement.uuid,
               expanded,
             }),
@@ -523,7 +523,7 @@
           command: "reorder-tiles",
           arguments: { tileOrder: fullOrder },
           action: (request) =>
-            request("/api/personal-cockpit/tiles/reorder", {
+            request("/api/cockpit/tiles/reorder", {
               tile_uuids: fullOrder,
             }),
           successMessage: "Reordered",
@@ -560,7 +560,7 @@
         const title = topicTitle(
           "kanban",
           board.name,
-          `/apps/kanban?board=${encodeURIComponent(board.uuid)}`,
+          `/apps/initiative?board=${encodeURIComponent(board.uuid)}`,
         );
         main.append(title, objectiveElement(board));
         header.append(main);
@@ -626,7 +626,7 @@
           div.title = value;
           run(
             (request) =>
-              request("/api/personal-cockpit/kanban/boards/set_objective", {
+              request("/api/cockpit/kanban/boards/set_objective", {
                 board_uuid: board.uuid,
                 objective: value,
               }),
@@ -741,14 +741,14 @@
           if (value === "__selected__") {
             run(
               (request) =>
-                request("/api/personal-cockpit/cards/toggle_selected", { card_uuid: card.uuid }),
+                request("/api/cockpit/cards/toggle_selected", { card_uuid: card.uuid }),
               "Updated",
             );
             return;
           }
           run(
             (request) =>
-              request("/api/personal-cockpit/kanban/cards/move", {
+              request("/api/cockpit/kanban/cards/move", {
                 card_uuid: card.uuid,
                 column_uuid: value,
                 index: 0,
@@ -839,8 +839,8 @@
             );
             const endpoint =
               reaction.action === "rollback"
-                ? "/api/personal-cockpit/kanban/rollback"
-                : "/api/personal-cockpit/kanban/adopt";
+                ? "/api/cockpit/kanban/rollback"
+                : "/api/cockpit/kanban/adopt";
             await run(
               (request) =>
                 request(endpoint, {
@@ -949,7 +949,7 @@
       }
 
       function pickerCandidates() {
-        // Not board-scoped (unlike kanban.html's picker) - Overview spans
+        // Not board-scoped (unlike initiative.html's picker) - Overview spans
         // every board and has no per-board peer topic here, so this offers
         // every peer the session knows about instead.
         const known = state.people || [];
@@ -1013,7 +1013,7 @@
           command: "set-board-expanded",
           arguments: { uuid: board.uuid, expanded },
           action: (request) =>
-            request("/api/personal-cockpit/boards/settings", { board_uuid: board.uuid, expanded }),
+            request("/api/cockpit/boards/settings", { board_uuid: board.uuid, expanded }),
           successMessage: expanded ? "Expanded" : "Collapsed",
           project: (draft, change) => {
             const target = (draft.boards || []).find((entry) => entry.uuid === change.uuid);
@@ -1090,7 +1090,7 @@
             el("boardSettingsModal").close();
             return run(
               (request) =>
-                request("/api/personal-cockpit/kanban/boards/delete", {
+                request("/api/cockpit/kanban/boards/delete", {
                   board_uuid: board.uuid,
                 }),
               "Board deleted",
@@ -1110,7 +1110,7 @@
             el("agreementSettingsModal").close();
             return run(
               (request) =>
-                request("/api/personal-cockpit/agreement/agreements/delete", {
+                request("/api/cockpit/agreement/agreements/delete", {
                   agreement_uuid: agreement.uuid,
                 }),
               "Agreement deleted",
@@ -1123,7 +1123,7 @@
         el("boardSettingsModal").close();
         run(
           (request) =>
-            request("/api/personal-cockpit/boards/settings", {
+            request("/api/cockpit/boards/settings", {
               board_uuid: board.uuid,
               active_column_uuid: el("settingsActiveColumn").value,
               next_column_uuid: el("settingsNextColumn").value,
@@ -1239,7 +1239,7 @@
           el("cardModal").close();
           return run(
             (request) =>
-              request("/api/personal-cockpit/kanban/cards/delete", { card_uuid: card.uuid }),
+              request("/api/cockpit/kanban/cards/delete", { card_uuid: card.uuid }),
             "Card deleted",
           );
         });
@@ -1251,7 +1251,7 @@
         el("cardModal").close();
         run(
           (request) =>
-            request("/api/personal-cockpit/kanban/cards/update", {
+            request("/api/cockpit/kanban/cards/update", {
               card_uuid: card.uuid,
               name: el("cardName").value,
               description: el("cardDescription").value,
@@ -1266,7 +1266,7 @@
 
       SovereignShell.mount({
         container: el("shell"),
-        applicationId: "personal-cockpit",
+        applicationId: "s-cockpit",
         topicUuid: () => state?.selected_topic?.uuid || "",
         state: () => state || {},
         agendaRoutes: () => {
@@ -1274,35 +1274,35 @@
           if (app === "agreement") {
             return {
               topicKey: "agreement_uuid",
-              create: "/api/personal-cockpit/agreement/agenda/create",
-              delete: "/api/personal-cockpit/agreement/agenda/delete",
-              setPriority: "/api/personal-cockpit/agreement/agenda/set_priority",
-              move: "/api/personal-cockpit/agreement/agenda/move",
+              create: "/api/cockpit/agreement/agenda/create",
+              delete: "/api/cockpit/agreement/agenda/delete",
+              setPriority: "/api/cockpit/agreement/agenda/set_priority",
+              move: "/api/cockpit/agreement/agenda/move",
             };
           }
           if (app === "kanban") {
             return {
               topicKey: "board_uuid",
-              create: "/api/personal-cockpit/kanban/agenda/create",
-              delete: "/api/personal-cockpit/kanban/agenda/delete",
-              setPriority: "/api/personal-cockpit/kanban/agenda/set_priority",
-              move: "/api/personal-cockpit/kanban/agenda/move",
+              create: "/api/cockpit/kanban/agenda/create",
+              delete: "/api/cockpit/kanban/agenda/delete",
+              setPriority: "/api/cockpit/kanban/agenda/set_priority",
+              move: "/api/cockpit/kanban/agenda/move",
             };
           }
           if (app === "flow") {
             return {
               topicKey: "process_uuid",
-              create: "/api/personal-cockpit/flow/agenda/create",
-              delete: "/api/personal-cockpit/flow/agenda/delete",
-              setPriority: "/api/personal-cockpit/flow/agenda/set_priority",
-              move: "/api/personal-cockpit/flow/agenda/move",
+              create: "/api/cockpit/flow/agenda/create",
+              delete: "/api/cockpit/flow/agenda/delete",
+              setPriority: "/api/cockpit/flow/agenda/set_priority",
+              move: "/api/cockpit/flow/agenda/move",
             };
           }
           return null;
         },
         autoAdoptRoute: () =>
           state?.selected_topic?.application_id === "kanban"
-            ? { path: "/api/personal-cockpit/kanban/auto_adopt", topicKey: "board_uuid" }
+            ? { path: "/api/cockpit/kanban/auto_adopt", topicKey: "board_uuid" }
             : null,
         autoAdoptLabels: AUTO_ADOPT_LABELS,
         autoAdoptDescriptions: AUTO_ADOPT_DESCRIPTIONS,
@@ -1357,7 +1357,7 @@
       function createFlow() {
         return run(
           (request) =>
-            request("/api/personal-cockpit/flow/processes/create", {
+            request("/api/cockpit/flow/processes/create", {
               title: "Untitled process",
               definition_id: "integrative-election",
               definition_version: "0.2.0",
@@ -1405,20 +1405,20 @@
         run(async (request) => {
           if (templateUuid) {
             const result = await request(
-              "/api/personal-cockpit/kanban/boards/copy",
+              "/api/cockpit/kanban/boards/copy",
               { board_uuid: templateUuid },
               "copy",
             );
             if (result.value) {
               await request(
-                "/api/personal-cockpit/kanban/boards/rename",
+                "/api/cockpit/kanban/boards/rename",
                 { board_uuid: result.value, name },
                 "rename",
               );
             }
             return result;
           }
-          return request("/api/personal-cockpit/kanban/boards/create", { name });
+          return request("/api/cockpit/kanban/boards/create", { name });
         }, "Board created");
       });
 
@@ -1433,11 +1433,11 @@
         run(
           (request) =>
             templateUuid
-              ? request("/api/personal-cockpit/agreement/agreements/clone", {
+              ? request("/api/cockpit/agreement/agreements/clone", {
                   agreement_uuid: templateUuid,
                   title,
                 })
-              : request("/api/personal-cockpit/agreement/agreements/create", {
+              : request("/api/cockpit/agreement/agreements/create", {
                   title,
                 }),
           "Agreement created",

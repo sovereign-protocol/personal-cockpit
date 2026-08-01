@@ -1,6 +1,6 @@
-# Personal Cockpit
+# S-Cockpit
 
-Personal Cockpit is a standalone local view that aggregates summaries from
+S-Cockpit is a standalone local view that aggregates summaries from
 active Sovereign applications through optional, versioned public facades. It
 does not own or reinterpret source-application protocol trees and remains usable
 when any source application is absent.
@@ -10,10 +10,10 @@ when any source application is absent.
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\sovereign-host.exe 9307 config/personal-cockpit.example.json
+.\.venv\Scripts\sovereign-host.exe 9307 config/cockpit.example.json
 ```
 
-Install source applications separately and list them before Personal Cockpit in
+Install source applications separately and list them before S-Cockpit in
 the host configuration to enable their adapters.
 
 ## Desktop window
@@ -36,11 +36,11 @@ application name shown in the shared header, including in a browser client.
 ### Building the combined executable
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e ../s-kanban -e ../s-agreement -e ../s-flow pyinstaller
+.\.venv\Scripts\python.exe -m pip install -e ../s-initiative -e ../s-team -e ../s-flow pyinstaller
 .\.venv\Scripts\pyinstaller.exe Sovereign.spec
 ```
 
-The result is `dist/Sovereign.exe` — the Cockpit, S-Kanban, S-Agreement,
+The result is `dist/Sovereign.exe` — the Cockpit, S-Initiative, S-Team,
 S-Flow and the Core they run on in a single window.
 
 ### Building for macOS without a Mac

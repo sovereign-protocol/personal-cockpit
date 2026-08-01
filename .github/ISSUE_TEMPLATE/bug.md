@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a reproducible Personal Cockpit defect
+about: Report a reproducible S-Cockpit defect
 labels: bug
 ---
 

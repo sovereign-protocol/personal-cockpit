@@ -52,12 +52,12 @@ def _session_transaction(method):
     return wrapped
 
 
-PERSONAL_COCKPIT_APPLICATION_ID = "personal-cockpit"
-APP_METADATA_KEY = PERSONAL_COCKPIT_APPLICATION_ID
-KANBAN_APPLICATION_ID = "kanban"
-KANBAN_FACADE_API_VERSION = 1
-AGREEMENT_APPLICATION_ID = "agreement"
-AGREEMENT_FACADE_API_VERSION = 1
+COCKPIT_APPLICATION_ID = "cockpit"
+APP_METADATA_KEY = COCKPIT_APPLICATION_ID
+INITIATIVE_APPLICATION_ID = "initiative"
+INITIATIVE_FACADE_API_VERSION = 1
+TEAM_APPLICATION_ID = "team"
+TEAM_FACADE_API_VERSION = 1
 FLOW_APPLICATION_ID = "flow"
 FLOW_FACADE_API_VERSION = 1
 
@@ -88,7 +88,7 @@ class BoardOfBoardsLogic:
             return None
         try:
             facade = self.facades.find(
-                KANBAN_APPLICATION_ID, KANBAN_FACADE_API_VERSION,
+                INITIATIVE_APPLICATION_ID, INITIATIVE_FACADE_API_VERSION,
             )
         except ValueError as exc:
             self._kanban_facade_error = str(exc)
@@ -112,7 +112,7 @@ class BoardOfBoardsLogic:
             return None
         try:
             return self.facades.find(
-                AGREEMENT_APPLICATION_ID, AGREEMENT_FACADE_API_VERSION,
+                TEAM_APPLICATION_ID, TEAM_FACADE_API_VERSION,
             )
         except ValueError:
             return None
@@ -169,7 +169,7 @@ class BoardOfBoardsLogic:
             summaries.append({
                 "uuid": node.uuid,
                 "title": node.data.get("title", ""),
-                "application_id": AGREEMENT_APPLICATION_ID,
+                "application_id": TEAM_APPLICATION_ID,
                 "unsettled_count": unsettled,
                 "agenda_count": len(self.session.agenda_items(node.uuid)),
                 "expanded": expanded,
@@ -328,7 +328,7 @@ class BoardOfBoardsLogic:
                 {
                     "uuid": board["uuid"],
                     "title": board["name"],
-                    "application_id": KANBAN_APPLICATION_ID,
+                    "application_id": INITIATIVE_APPLICATION_ID,
                 }
                 for board in boards
             ),
@@ -336,7 +336,7 @@ class BoardOfBoardsLogic:
                 {
                     "uuid": agreement["uuid"],
                     "title": agreement["title"],
-                    "application_id": AGREEMENT_APPLICATION_ID,
+                    "application_id": TEAM_APPLICATION_ID,
                 }
                 for agreement in agreements
             ),
@@ -368,8 +368,8 @@ class BoardOfBoardsLogic:
                 "identity_uuid": self.session.identity.uuid,
             }
         facade = {
-            KANBAN_APPLICATION_ID: self._kanban,
-            AGREEMENT_APPLICATION_ID: self._agreement,
+            INITIATIVE_APPLICATION_ID: self._kanban,
+            TEAM_APPLICATION_ID: self._agreement,
             FLOW_APPLICATION_ID: self._flow,
         }.get(selected["application_id"], lambda: None)()
         if not facade:
@@ -391,10 +391,10 @@ class BoardOfBoardsLogic:
         # Which topic-creating applications this host can offer in the
         # "+ Add new" menu - the cockpit itself creates neither, it only
         # routes to whichever facade is present.
-        creatable = [{"application_id": KANBAN_APPLICATION_ID, "label": "Board"}]
+        creatable = [{"application_id": INITIATIVE_APPLICATION_ID, "label": "Board"}]
         if self._agreement() is not None:
             creatable.append(
-                {"application_id": AGREEMENT_APPLICATION_ID, "label": "Agreement"}
+                {"application_id": TEAM_APPLICATION_ID, "label": "Agreement"}
             )
         if self._flow() is not None:
             creatable.append(
@@ -419,7 +419,7 @@ class BoardOfBoardsLogic:
                 "users": [],
                 "selected_topic": selected,
                 "sources": {
-                    KANBAN_APPLICATION_ID: {
+                    INITIATIVE_APPLICATION_ID: {
                         "available": False,
                         "reason": self._kanban_facade_error,
                     },
@@ -468,13 +468,13 @@ class BoardOfBoardsLogic:
             ),
             "creatable": creatable,
             # Every peer this session knows about, for the card-edit modal's
-            # owner/members picker - not board-scoped (unlike kanban.html's
+            # owner/members picker - not board-scoped (unlike initiative.html's
             # picker, which restricts to current board peers) since Overview
             # spans every board and has no per-board peer topic to filter by.
             "people": list(self._people_by_uuid().values()),
             "users": kanban.users(),
             "selected_topic": selected,
-            "sources": {KANBAN_APPLICATION_ID: {"available": True}},
+            "sources": {INITIATIVE_APPLICATION_ID: {"available": True}},
         }
 
     @_session_transaction
@@ -571,14 +571,14 @@ class BoardOfBoardsLogic:
             *(
                 {
                     "uuid": board.uuid,
-                    "application_id": KANBAN_APPLICATION_ID,
+                    "application_id": INITIATIVE_APPLICATION_ID,
                 }
                 for board in (kanban.boards() if kanban else [])
             ),
             *(
                 {
                     "uuid": node.uuid,
-                    "application_id": AGREEMENT_APPLICATION_ID,
+                    "application_id": TEAM_APPLICATION_ID,
                 }
                 for node in (agreement.agreements() if agreement else [])
             ),
@@ -608,7 +608,7 @@ class BoardOfBoardsLogic:
             grouped = cls._filter_transition_groups(
                 board.pop("_transition_by_node", {}),
                 observations.get(topic_uuid, {}),
-                KANBAN_APPLICATION_ID,
+                INITIATIVE_APPLICATION_ID,
             )
             discussion_nodes = set(board.pop("_discussion_node_uuids", []))
             board["discussion_count"] = len(
@@ -636,7 +636,7 @@ class BoardOfBoardsLogic:
             grouped = cls._filter_transition_groups(
                 agreement.pop("_transition_by_node", {}),
                 observations.get(topic_uuid, {}),
-                AGREEMENT_APPLICATION_ID,
+                TEAM_APPLICATION_ID,
             )
             agreement["unsettled_count"] = sum(
                 1 for value in grouped.values()
@@ -697,7 +697,7 @@ class BoardOfBoardsLogic:
             event.get("peer_addr"),
         ) or {})
         state = (peer.get("channel_liveness") or {}).get("state", "unknown")
-        if policy == KANBAN_APPLICATION_ID:
+        if policy == INITIATIVE_APPLICATION_ID:
             return state == "alive"
         return state != "stale"
 
@@ -753,7 +753,7 @@ class BoardOfBoardsLogic:
         next_cards.sort(key=lambda entry: relevance_order[entry["relevance"]])
         return {
             "uuid": board.uuid,
-            "application_id": KANBAN_APPLICATION_ID,
+            "application_id": INITIATIVE_APPLICATION_ID,
             "name": board.data.get("name", ""),
             "objective": board.data.get("objective", ""),
             "expanded": bool(settings.get("expanded", False)),

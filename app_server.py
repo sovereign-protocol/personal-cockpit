@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Personal Cockpit launcher with an optional installed S-Kanban source."""
+"""S-Cockpit launcher with an optional installed S-Initiative source."""
 
 from sovereign.app_server import *  # noqa: F401,F403
 from sovereign.app_server import (
@@ -10,21 +10,21 @@ from sovereign.app_server import (
 
 
 APPLICATION_ALIASES = {
-    "kanban": {
-        "app_module": "s_kanban.application",
-        "application_id": "kanban",
-        "asset_package": "s_kanban.assets",
-        "ui_file": "kanban.html",
-        "css_file": "kanban.css",
+    "initiative": {
+        "app_module": "s_initiative.application",
+        "application_id": "initiative",
+        "asset_package": "s_initiative.assets",
+        "ui_file": "initiative.html",
+        "css_file": "initiative.css",
     },
     "boardofboards": {
-        "app_module": "personal_cockpit.application",
-        "application_id": "personal-cockpit",
+        "app_module": "s_cockpit.application",
+        "application_id": "cockpit",
         "applications": [
-            {"module": "s_kanban.application"},
-            {"module": "personal_cockpit.application"},
+            {"module": "s_initiative.application"},
+            {"module": "s_cockpit.application"},
         ],
-        "asset_package": "personal_cockpit.assets",
+        "asset_package": "s_cockpit.assets",
         "ui_file": "boardofboards.html",
         "css_file": "boardofboards.css",
     },

@@ -3,7 +3,7 @@
 The window, the runtime and the shutdown are Core's. This module supplies
 which applications to host and what to call the window.
 
-Unlike S-Kanban's single-application entry, this one mounts every application
+Unlike S-Initiative's single-application entry, this one mounts every application
 it can find and makes the Cockpit primary, so the Cockpit does the switching
 between topics rather than each application carrying its own navigation. That
 is what `all3_config.json` did before the repository split.
@@ -27,8 +27,8 @@ WINDOW_TITLE = "Sovereign"
 # Producers the Cockpit aggregates, in the order they should mount. The
 # Cockpit goes last so it is built once its sources already exist.
 OPTIONAL_APPLICATIONS = (
-    ("s_kanban", "s_kanban.application"),
-    ("s_agreement", "s_agreement.application"),
+    ("s_initiative", "s_initiative.application"),
+    ("s_team", "s_team.application"),
 )
 
 
@@ -39,14 +39,14 @@ def installed_applications() -> list[dict]:
         for package, module in OPTIONAL_APPLICATIONS
         if importlib.util.find_spec(package) is not None
     ]
-    modules.append({"module": "personal_cockpit.application"})
+    modules.append({"module": "s_cockpit.application"})
     return modules
 
 
 def application_aliases() -> dict:
     return {
         "cockpit": {
-            "app_module": "personal_cockpit.application",
+            "app_module": "s_cockpit.application",
             "application_id": APPLICATION_MANIFEST.application_id,
             "applications": installed_applications(),
             "primary_application_id": APPLICATION_MANIFEST.application_id,

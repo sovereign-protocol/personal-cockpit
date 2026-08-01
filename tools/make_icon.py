@@ -20,14 +20,14 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 
-# Not src/personal_cockpit/assets/, which is packaged and served to the
+# Not src/s_cockpit/assets/, which is packaged and served to the
 # browser. This one is consumed by PyInstaller at build time and ships inside
 # the executable rather than beside it.
 OUTPUT_DIR = Path(__file__).resolve().parents[1] / "packaging"
 WINDOWS_OUTPUT = OUTPUT_DIR / "sovereign.ico"
 MACOS_OUTPUT = OUTPUT_DIR / "sovereign.icns"
 
-# Straight from personal_cockpit.application.APPLICATION_MANIFEST.icon: four
+# Straight from s_cockpit.application.APPLICATION_MANIFEST.icon: four
 # 7x7 squares with radius 1, at these origins on a 24-unit viewBox.
 GRID = 24.0
 SQUARE = 7.0

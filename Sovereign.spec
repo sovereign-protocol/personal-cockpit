@@ -1,15 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 """Freeze the whole Sovereign desktop into one windowed executable.
 
-The Cockpit is primary and does the switching between topics, with S-Kanban
-and S-Agreement mounted alongside it - the arrangement `all3_config.json`
+The Cockpit is primary and does the switching between topics, with S-Initiative
+and S-Team mounted alongside it - the arrangement `all3_config.json`
 described before the repository split.
 
 Build from a checkout of this repository, with the other applications
 installed from their own clones:
 
     pip install -e .[desktop]
-    pip install -e ../s-kanban -e ../s-agreement
+    pip install -e ../s-initiative -e ../s-team
     pip install pyinstaller
     pyinstaller Sovereign.spec
 
@@ -35,7 +35,7 @@ hiddenimports = []
 # runtime and PyInstaller cannot see through that.
 for package in (
     "uvicorn", "webview",
-    "sovereign", "personal_cockpit", "s_kanban", "s_agreement",
+    "sovereign", "s_cockpit", "s_initiative", "s_team",
 ):
     package_datas, package_binaries, package_hiddenimports = collect_all(package)
     datas += package_datas

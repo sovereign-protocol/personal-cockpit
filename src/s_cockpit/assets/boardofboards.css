@@ -675,7 +675,7 @@ button {
 
 /* U4: one theme for 0.1. This was the dark half of a
    prefers-color-scheme pair, applied unconditionally now. Kanban and
-   S-Agreement force dark, and the shell's chrome is dark, so following
+   S-Team force dark, and the shell's chrome is dark, so following
    the machine here put a dark dialog on a light page. Light mode returns
    as a themed pass across all three, not as one application's option. */
 body {

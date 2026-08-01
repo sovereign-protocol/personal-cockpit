@@ -1,6 +1,6 @@
 """The combined desktop entry, including what it does when producers are absent.
 
-A5 makes S-Kanban and S-Agreement optional, late-bound producers. The
+A5 makes S-Initiative and S-Team optional, late-bound producers. The
 executable mounts whichever are installed, so the interesting case is not the
 happy one - it is starting with fewer.
 """
@@ -10,12 +10,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from personal_cockpit import desktop
-from personal_cockpit.application import APPLICATION_MANIFEST
+from s_cockpit import desktop
+from s_cockpit.application import APPLICATION_MANIFEST
 
 
 ROOT = Path(__file__).resolve().parents[1]
-COCKPIT_MODULE = "personal_cockpit.application"
+COCKPIT_MODULE = "s_cockpit.application"
 
 
 def _modules(applications):
@@ -42,7 +42,7 @@ class InstalledApplicationTests(unittest.TestCase):
 
         self.assertEqual(
             _modules(applications),
-            ["s_kanban.application", "s_agreement.application", COCKPIT_MODULE],
+            ["s_initiative.application", "s_team.application", COCKPIT_MODULE],
         )
 
 
@@ -85,7 +85,7 @@ class SpecTests(unittest.TestCase):
         self.assertTrue(collected, "no collect_all package list found in the spec")
 
         expected = {package for package, _ in desktop.OPTIONAL_APPLICATIONS}
-        expected |= {"sovereign", "personal_cockpit"}
+        expected |= {"sovereign", "s_cockpit"}
         self.assertLessEqual(expected, collected)
 
     def test_the_spec_collects_the_window_backend(self):

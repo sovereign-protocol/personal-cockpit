@@ -1,4 +1,4 @@
-"""Personal Cockpit manifest and host wiring."""
+"""S-Cockpit manifest and host wiring."""
 
 from sovereign import (
     ApplicationInstance, ApplicationManifest, ApplicationServices,
@@ -9,10 +9,10 @@ from .logic import BoardOfBoardsLogic
 
 
 APPLICATION_MANIFEST = ApplicationManifest(
-    application_id="personal-cockpit",
-    display_name="Personal Cockpit",
+    application_id="cockpit",
+    display_name="S-Cockpit",
     data_schema_version=1,
-    asset_package="personal_cockpit.assets",
+    asset_package="s_cockpit.assets",
     icon=(
         '<rect x="3" y="3" width="7" height="7" rx="1"></rect>'
         '<rect x="14" y="3" width="7" height="7" rx="1"></rect>'

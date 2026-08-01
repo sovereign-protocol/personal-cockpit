@@ -3,20 +3,20 @@ import unittest
 from pathlib import Path
 
 import app_server
-from personal_cockpit.logic import BoardOfBoardsLogic
+from s_cockpit.logic import BoardOfBoardsLogic
 try:
-    from s_kanban.facade import KanbanFacade
-    from s_kanban.logic import KanbanLogic
+    from s_initiative.facade import InitiativeFacade
+    from s_initiative.logic import InitiativeLogic
 except ImportError:  # pragma: no cover - depends on what is installed
-    KanbanFacade = KanbanLogic = None
+    InitiativeFacade = InitiativeLogic = None
 from sovereign.protocol import ProtocolNode
 
 
-# A5: Personal Cockpit may depend on another application only optionally.
-# Its own suite must therefore run with S-Kanban absent, which is also the
-# only way CI can install it before S-Kanban exists on an index.
-requires_kanban = unittest.skipIf(
-    KanbanLogic is None, "S-Kanban is not installed",
+# A5: S-Cockpit may depend on another application only optionally.
+# Its own suite must therefore run with S-Initiative absent, which is also the
+# only way CI can install it before S-Initiative exists on an index.
+requires_initiative = unittest.skipIf(
+    InitiativeLogic is None, "S-Initiative is not installed",
 )
 
 
@@ -27,22 +27,22 @@ class _FacadeLookup:
         self.flow = flow
 
     def find(self, application_id, facade_api_version):
-        if application_id == "kanban" and facade_api_version == 1:
+        if application_id == "initiative" and facade_api_version == 1:
             return self.kanban
-        if application_id == "agreement" and facade_api_version == 1:
+        if application_id == "team" and facade_api_version == 1:
             return self.agreement
         if application_id == "flow" and facade_api_version == 1:
             return self.flow
         return None
 
 
-class _StubAgreementFacade:
-    """S-Agreement's facade, over nodes this test makes itself.
+class _StubTeamFacade:
+    """S-Team's facade, over nodes this test makes itself.
 
-    The Cockpit consumes an interface, not a package - S-Agreement is as
-    optional as S-Kanban (A5) - so the Cockpit's own summaries are tested
+    The Cockpit consumes an interface, not a package - S-Team is as
+    optional as S-Initiative (A5) - so the Cockpit's own summaries are tested
     against the interface. That the real application implements it is
-    S-Agreement's test to make.
+    S-Team's test to make.
     """
 
     def __init__(self, session):
@@ -210,20 +210,20 @@ def cockpit(runtime, agreement=None, flow=None):
         runtime.session,
         runtime.config,
         facades=_FacadeLookup(
-            KanbanFacade(runtime.logic), agreement, flow,
+            InitiativeFacade(runtime.logic), agreement, flow,
         ),
     )
 
 
 class CockpitWithoutKanbanTests(unittest.TestCase):
-    """Runs whether or not S-Kanban is installed - that is the point."""
+    """Runs whether or not S-Initiative is installed - that is the point."""
 
     def test_without_kanban_facade_is_empty_and_reports_source_unavailable(self):
         directory = tempfile.TemporaryDirectory()
         config = app_server.load_config()
         config.update({
-            "applications": [{"module": "personal_cockpit.application"}],
-            "primary_application_id": "personal-cockpit",
+            "applications": [{"module": "s_cockpit.application"}],
+            "primary_application_id": "cockpit",
             "storage_file": str(Path(directory.name) / "cockpit-only.json"),
         })
         runtime = app_server.create_runtime(8499, config)
@@ -233,16 +233,16 @@ class CockpitWithoutKanbanTests(unittest.TestCase):
         payload = bob.summary_payload()
 
         self.assertEqual(payload["boards"], [])
-        self.assertFalse(payload["sources"]["kanban"]["available"])
-        self.assertIn("not active", payload["sources"]["kanban"]["reason"])
+        self.assertFalse(payload["sources"]["initiative"]["available"])
+        self.assertIn("not active", payload["sources"]["initiative"]["reason"])
         result = bob.reorder_boards([])
         self.assertEqual(result.status, "error")
 
-@requires_kanban
+@requires_initiative
 class BoardOfBoardsLogicTests(unittest.TestCase):
     def test_compatibility_payload_uses_explicit_detached_observations(self):
         runtime = self.runtime(8534)
-        agreement = _StubAgreementFacade(runtime.session)
+        agreement = _StubTeamFacade(runtime.session)
         bob = cockpit(runtime, agreement)
         agreement_uuid = agreement.create("No nested transport")
         bob.select_topic(agreement_uuid)
@@ -260,19 +260,19 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         config["storage_file"] = str(Path(directory.name) / "cockpit.json")
         runtime = app_server.create_runtime(8498, config)
         runtime._test_tmp = directory
-        kanban = runtime.host.instances["kanban"].logic
+        kanban = runtime.host.instances["initiative"].logic
         kanban.ensure_board()
 
         self.assertEqual(runtime.host.primary_instance.manifest.application_id,
-                         "personal-cockpit")
+                         "cockpit")
         self.assertEqual(len(runtime.logic.summary_payload()["boards"]), 1)
         self.assertTrue(
-            runtime.logic.summary_payload()["sources"]["kanban"]["available"],
+            runtime.logic.summary_payload()["sources"]["initiative"]["available"],
         )
 
     def test_summary_lists_all_boards_collapsed_by_default(self):
         runtime = self.runtime(8501)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
 
         board_a = kanban.ensure_board()
@@ -289,7 +289,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_tiles_and_selected_collaboration_are_separate_payloads(self):
         runtime = self.runtime(8532)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         runtime.session.create_agenda_item(board.uuid, "Discuss timing")
@@ -304,7 +304,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_summary_carries_columns_and_settings_for_each_board(self):
         runtime = self.runtime(8511)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -330,7 +330,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_active_and_next_bands_partition_by_mapped_columns(self):
         runtime = self.runtime(8502)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -348,7 +348,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_active_band_includes_all_cards_with_personal_cards_first(self):
         runtime = self.runtime(8513)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -374,7 +374,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_owner_cards_sort_before_participant_cards(self):
         runtime = self.runtime(8514)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -395,7 +395,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_card_summary_includes_people_labels(self):
         runtime = self.runtime(8524)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         kanban.session.set_identity("Andrea")
         board = kanban.ensure_board()
@@ -416,7 +416,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_summary_payload_lists_known_people_for_the_card_picker(self):
         runtime = self.runtime(8527)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         kanban.session.set_identity("Andrea")
         my_id = kanban.user_profile().uuid
@@ -429,7 +429,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_summary_counts_cards_in_discussion(self):
         runtime = self.runtime(8525)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -464,7 +464,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_card_perspectives_include_multiple_absent_versions_and_dedupe_forwarding(self):
         runtime = self.runtime(8528)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         card = kanban.create_card(kanban.columns(board)[0].uuid, "Task").value
@@ -482,7 +482,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_selected_flag_is_summary_only_and_toggles(self):
         runtime = self.runtime(8503)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -506,7 +506,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_unpick_board_collapses_and_leaves_the_real_board_untouched(self):
         runtime = self.runtime(8504)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         bob.pick_board(board.uuid, [], [])
@@ -520,7 +520,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_reorder_boards_keeps_unmentioned_boards_appended(self):
         runtime = self.runtime(8505)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
@@ -544,7 +544,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         # group the given uuids belong to, and leave expanded/collapsed
         # untouched either way.
         runtime = self.runtime(8526)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
@@ -563,8 +563,8 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_boards_and_agreements_share_one_tile_order(self):
         runtime = self.runtime(8531)
-        kanban: KanbanLogic = runtime.logic
-        agreement = _StubAgreementFacade(runtime.session)
+        kanban: InitiativeLogic = runtime.logic
+        agreement = _StubTeamFacade(runtime.session)
         bob = cockpit(runtime, agreement)
         board = kanban.ensure_board()
         agreement_uuid = agreement.create("Working agreement")
@@ -594,7 +594,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_summary_drops_a_picked_board_that_no_longer_exists(self):
         runtime = self.runtime(8506)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
@@ -608,7 +608,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_card_edits_via_kanban_logic_are_reflected_in_next_summary(self):
         runtime = self.runtime(8507)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -627,7 +627,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_pick_board_ignores_column_uuids_from_a_different_board(self):
         runtime = self.runtime(8508)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board_a = kanban.ensure_board()
         board_b_uuid = kanban.create_board("Board B").value
@@ -641,7 +641,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_pick_board_does_not_allow_same_column_as_active_and_next(self):
         runtime = self.runtime(8512)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo = kanban.columns(board)[0]
@@ -654,7 +654,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_collapse_keeps_column_mapping(self):
         runtime = self.runtime(8515)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         todo, doing, done = kanban.columns(board)
@@ -674,12 +674,12 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_legacy_bindings_do_not_overwrite_new_column_settings(self):
         runtime = self.runtime(8535)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         board = kanban.ensure_board()
         todo, doing, _done = kanban.columns(board)
         with runtime.session.lock:
             metadata = runtime.session.application_metadata(
-                "personal-cockpit",
+                "cockpit",
             )
             metadata["picked_boards"] = [board.uuid]
             metadata["board_bindings"] = {
@@ -701,7 +701,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertEqual(summary["next_column_uuid"], todo.uuid)
         with runtime.session.lock:
             metadata = runtime.session.application_metadata(
-                "personal-cockpit",
+                "cockpit",
             )
             self.assertNotIn("picked_boards", metadata)
             self.assertNotIn("board_bindings", metadata)
@@ -716,7 +716,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_objective_field_defaults_to_empty_and_is_settable(self):
         runtime = self.runtime(8510)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         bob.pick_board(board.uuid, [], [])
@@ -731,7 +731,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_selected_topic_drives_cockpit_collaboration_context(self):
         runtime = self.runtime(8522)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         first = kanban.ensure_board()
         second_uuid = kanban.create_board("Second").value
@@ -751,7 +751,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         # The tile shows divergences and agenda items side by side, so the
         # agenda count has to be per board, not just for the selected one.
         runtime = self.runtime(8523)
-        kanban: KanbanLogic = runtime.logic
+        kanban: InitiativeLogic = runtime.logic
         bob = cockpit(runtime)
         board = kanban.ensure_board()
         other_uuid = kanban.create_board("Second").value
@@ -768,7 +768,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_agreement_tile_reports_agenda_count_and_starts_collapsed(self):
         runtime = self.runtime(8524)
-        agreement = _StubAgreementFacade(runtime.session)
+        agreement = _StubTeamFacade(runtime.session)
         bob = cockpit(runtime, agreement)
         agreement_uuid = agreement.create("Working agreement")
         runtime.session.create_agenda_item(agreement_uuid, "Revisit quorum")
@@ -782,7 +782,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_agreement_agenda_items_can_be_reordered_through_the_facade(self):
         runtime = self.runtime(8530)
-        agreement = _StubAgreementFacade(runtime.session)
+        agreement = _StubTeamFacade(runtime.session)
         bob = cockpit(runtime, agreement)
         agreement_uuid = agreement.create("Working agreement")
         first = agreement.create_agenda_item(
@@ -833,7 +833,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_enlarging_an_agreement_carries_its_whole_document(self):
         runtime = self.runtime(8525)
-        agreement = _StubAgreementFacade(runtime.session)
+        agreement = _StubTeamFacade(runtime.session)
         bob = cockpit(runtime, agreement)
         agreement_uuid = agreement.create("Working agreement")
         first = agreement.add_section(agreement_uuid, "Purpose", order=0)
@@ -858,7 +858,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_collapsing_an_agreement_drops_the_document_again(self):
         runtime = self.runtime(8526)
-        agreement = _StubAgreementFacade(runtime.session)
+        agreement = _StubTeamFacade(runtime.session)
         bob = cockpit(runtime, agreement)
         agreement_uuid = agreement.create("Working agreement")
         agreement.add_section(agreement_uuid, "Purpose")
@@ -872,7 +872,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_missing_agreement_is_ignored_without_mutating_during_a_read(self):
         runtime = self.runtime(8527)
-        agreement = _StubAgreementFacade(runtime.session)
+        agreement = _StubTeamFacade(runtime.session)
         bob = cockpit(runtime, agreement)
         agreement_uuid = agreement.create("Working agreement")
         bob.set_agreement_expanded(agreement_uuid, True)
@@ -888,7 +888,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
     def test_set_agreement_expanded_rejects_an_unknown_agreement(self):
         runtime = self.runtime(8528)
-        bob = cockpit(runtime, _StubAgreementFacade(runtime.session))
+        bob = cockpit(runtime, _StubTeamFacade(runtime.session))
 
         result = bob.set_agreement_expanded("no-such-uuid", True)
 
@@ -906,7 +906,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
     @staticmethod
     def runtime(port: int):
         directory = tempfile.TemporaryDirectory()
-        config = app_server.load_config(None, "kanban")
+        config = app_server.load_config(None, "initiative")
         config["storage_file"] = str(Path(directory.name) / f"{port}.json")
         runtime = app_server.create_runtime(port, config)
         runtime._test_tmp = directory

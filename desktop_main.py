@@ -6,7 +6,7 @@ frozen build and the installed `sovereign-desktop` command share exactly one
 implementation.
 """
 
-from personal_cockpit.desktop import main
+from s_cockpit.desktop import main
 
 
 if __name__ == "__main__":

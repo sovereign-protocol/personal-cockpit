@@ -1,1 +1,1 @@
-"""Personal Cockpit tests."""
+"""S-Cockpit tests."""

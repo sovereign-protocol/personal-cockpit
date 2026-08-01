@@ -1,4 +1,4 @@
-"""Boundaries and packaging invariants for what Personal Cockpit ships.
+"""Boundaries and packaging invariants for what S-Cockpit ships.
 
 The pre-split repository checked every distribution at once, from paths no
 published repository has, so none of this shipped. These are source scans
@@ -16,13 +16,13 @@ import unittest
 from importlib.resources import files
 from pathlib import Path
 
-import personal_cockpit
+import s_cockpit
 import sovereign
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = sorted((ROOT / "src").rglob("*.py"))
-OTHER_APPLICATIONS = ("s_agreement", "s_flow", "s_kanban")
+OTHER_APPLICATIONS = ("s_team", "s_flow", "s_initiative")
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -42,12 +42,12 @@ def imported_modules(path: Path) -> set[str]:
 class PackagingTests(unittest.TestCase):
     def test_distribution_and_module_versions_agree(self):
         self.assertEqual(
-            importlib.metadata.version("personal-cockpit"),
-            personal_cockpit.__version__,
+            importlib.metadata.version("sovereign-cockpit"),
+            s_cockpit.__version__,
         )
 
     def test_installed_browser_assets_are_available(self):
-        assets = files("personal_cockpit.assets")
+        assets = files("s_cockpit.assets")
         self.assertTrue(assets.joinpath("boardofboards.html").is_file())
         self.assertTrue(assets.joinpath("boardofboards.css").is_file())
 
@@ -57,12 +57,12 @@ class PackagingTests(unittest.TestCase):
         # site-packages. The invariant is this repository's layout - the
         # source sits under src/, and no flat copy survives beside it for an
         # import to pick up ahead of the installed package.
-        self.assertTrue((ROOT / "src" / "personal_cockpit" / "__init__.py").is_file())
-        self.assertFalse((ROOT / "personal_cockpit").exists())
+        self.assertTrue((ROOT / "src" / "s_cockpit" / "__init__.py").is_file())
+        self.assertFalse((ROOT / "s_cockpit").exists())
 
     def test_live_context_does_not_nest_transport_under_session_snapshot(self):
         controller = (
-            ROOT / "src" / "personal_cockpit" / "controller.py"
+            ROOT / "src" / "s_cockpit" / "controller.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
             "_composite_response(runtime, logic, logic.tiles_snapshot)",
@@ -74,10 +74,10 @@ class PackagingTests(unittest.TestCase):
         )
 
     def test_distribution_has_no_kanban_dependency(self):
-        # A5: S-Kanban is an optional, late-bound producer. The moment it
+        # A5: S-Initiative is an optional, late-bound producer. The moment it
         # appears in `dependencies`, installing the Cockpit drags it in and
         # the optionality the architecture rests on is gone.
-        metadata = importlib.metadata.metadata("personal-cockpit")
+        metadata = importlib.metadata.metadata("sovereign-cockpit")
         required = [
             item for item in (metadata.get_all("Requires-Dist") or [])
             # Extras carry a marker; only unconditional requirements bind.
@@ -85,13 +85,13 @@ class PackagingTests(unittest.TestCase):
         ]
         self.assertTrue(required, "expected at least the Core dependency")
         for item in required:
-            self.assertNotIn("s-kanban", item.lower())
-            self.assertNotIn("s_kanban", item.lower())
+            self.assertNotIn("s-initiative", item.lower())
+            self.assertNotIn("s_initiative", item.lower())
 
 
 class BoundaryTests(unittest.TestCase):
     def setUp(self):
-        self.assertTrue(SOURCES, "no Personal Cockpit sources found")
+        self.assertTrue(SOURCES, "no S-Cockpit sources found")
 
     def test_imports_core_only_through_its_public_root(self):
         public_names = set(sovereign.__all__)
@@ -118,9 +118,9 @@ class BoundaryTests(unittest.TestCase):
             self.assertEqual(violations, [], str(path))
 
     def test_never_imports_another_application(self):
-        # A5 makes S-Kanban an optional, late-bound producer. The Cockpit
+        # A5 makes S-Initiative an optional, late-bound producer. The Cockpit
         # reaches it through Core's host by application id, which is why it
-        # starts with reduced function when S-Kanban is absent. An import -
+        # starts with reduced function when S-Initiative is absent. An import -
         # even a guarded one inside a function - binds the two at load time.
         for path in SOURCES:
             imports = imported_modules(path)
@@ -144,7 +144,7 @@ class BoundaryTests(unittest.TestCase):
                 self.assertNotIn(package, source, str(path))
 
     def test_the_desktop_entry_probes_for_producers_instead_of_importing_them(self):
-        source = (ROOT / "src" / "personal_cockpit" / "desktop.py").read_text(
+        source = (ROOT / "src" / "s_cockpit" / "desktop.py").read_text(
             encoding="utf-8",
         )
 
@@ -185,7 +185,7 @@ class BoundaryTests(unittest.TestCase):
                 self.assertNotIn(literal, source, f"{path} re-declares the ranking")
 
     def test_domain_logic_does_not_depend_on_host_or_http_controllers(self):
-        path = ROOT / "src" / "personal_cockpit" / "logic.py"
+        path = ROOT / "src" / "s_cockpit" / "logic.py"
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         imports = imported_modules(path)
         self.assertFalse(
@@ -213,7 +213,7 @@ class BoundaryTests(unittest.TestCase):
 
 class AssetTests(unittest.TestCase):
     def setUp(self):
-        self.cockpit = files("personal_cockpit.assets").joinpath(
+        self.cockpit = files("s_cockpit.assets").joinpath(
             "boardofboards.html",
         ).read_text(encoding="utf-8")
 
@@ -232,7 +232,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("+ Add new…", self.cockpit)
 
     def test_cross_application_links_name_the_target_asset_prefix(self):
-        self.assertIn("/apps/kanban?board=", self.cockpit)
+        self.assertIn("/apps/initiative?board=", self.cockpit)
         self.assertIn("/apps/flow?process_uuid=", self.cockpit)
 
     def test_assets_do_not_call_producer_controller_namespaces(self):
@@ -244,7 +244,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("tilesInDisplayOrder()", self.cockpit)
         self.assertIn("APP_ICONS", self.cockpit)
         self.assertIn("bob-topic-icon", self.cockpit)
-        self.assertIn("/api/personal-cockpit/tiles/reorder", self.cockpit)
+        self.assertIn("/api/cockpit/tiles/reorder", self.cockpit)
         self.assertNotIn("expandedBoards()", self.cockpit)
         self.assertNotIn("collapsedBoards()", self.cockpit)
 
@@ -259,8 +259,8 @@ class AssetTests(unittest.TestCase):
         self.assertNotIn("next_cards", status_source)
 
     def test_cockpit_uses_the_shared_optimistic_session_view(self):
-        self.assertIn("/api/personal-cockpit/tiles", self.cockpit)
-        self.assertIn("/api/personal-cockpit/context", self.cockpit)
+        self.assertIn("/api/cockpit/tiles", self.cockpit)
+        self.assertIn("/api/cockpit/context", self.cockpit)
         self.assertIn('<script src="/shared-session.js"></script>', self.cockpit)
         self.assertIn("SovereignSessionView.create", self.cockpit)
         self.assertIn("sessionView.mutate", self.cockpit)
@@ -270,7 +270,7 @@ class AssetTests(unittest.TestCase):
         self.assertNotIn("pendingMutations", self.cockpit)
         self.assertNotIn("optimisticVersions", self.cockpit)
         self.assertNotIn(
-            'api("/api/personal-cockpit/summary")', self.cockpit,
+            'api("/api/cockpit/summary")', self.cockpit,
         )
 
 
