@@ -415,63 +415,20 @@ dialog.relay-target-dialog {
   border-left: 4px solid #d4a72c;
 }
 
-.bob-card.diff::before {
-  content: attr(data-transition-symbol);
-  position: absolute;
-  right: 0.3rem;
-  top: 0.25rem;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 50%;
-  color: #ffffff;
-  font-size: 0.78rem;
-  font-weight: 900;
-  line-height: 1;
+/* Colour by stage of the exchange, matching Kanban: grey still travelling,
+   purple mine and waiting on them, amber theirs and waiting on me, red a
+   real two-sided conflict. */
+.bob-card.stage-in_flight {
+  border-left-color: #8c9bab;
 }
-
-.bob-card.in-transition::after {
-  content: "";
-  position: absolute;
-  right: 0.45rem;
-  top: 0.45rem;
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 50%;
-  background: #8c9bab;
-}
-
-.bob-card.event-peer_made_changes {
-  border-left-color: #00875a;
-}
-.bob-card.event-peer_made_changes::before {
-  background: #00875a;
-}
-.bob-card.event-local_missing_node {
-  border-left-color: #00a3bf;
-}
-.bob-card.event-local_missing_node::before {
-  background: #00a3bf;
-}
-.bob-card.event-local_made_changes {
+.bob-card.stage-awaiting_peer {
   border-left-color: #6554c0;
 }
-.bob-card.event-local_made_changes::before {
-  background: #6554c0;
+.bob-card.stage-awaiting_me {
+  border-left-color: #f59e0b;
 }
-.bob-card.event-peer_missing_node {
-  border-left-color: #6b778c;
-}
-.bob-card.event-peer_missing_node::before {
-  background: #6b778c;
-}
-.bob-card.event-divergence {
+.bob-card.stage-conflict {
   border-left-color: #de350b;
-}
-.bob-card.event-divergence::before {
-  background: #de350b;
 }
 
 .bob-card.diff .bob-status-select {
@@ -902,6 +859,61 @@ button,
   color: #f0f6fc;
 }
 
+/* A team is its agreement, its actors and its roles. The three parts share
+   the document box, and split the tile's height between them - the text is
+   the part that grows, the two lists stay short and scroll if they must. */
+.bob-team-part {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 0.3rem;
+}
+
+.bob-team-part-agreement {
+  flex: 2 1 0;
+}
+
+.bob-team-part-actors,
+.bob-team-part-roles {
+  flex: 1 1 0;
+}
+
+.bob-team-part-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8b949e;
+}
+
+.bob-team-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+  font-size: 0.85rem;
+}
+
+.bob-team-name {
+  color: #f0f6fc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pushed to the right so the two lists read as name-then-holding down the
+   tile, whichever of them the eye lands on first. */
+.bob-team-detail {
+  margin-left: auto;
+  padding-left: 0.5rem;
+  color: #8b949e;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------------------------------
    Light theme.
 
@@ -1041,4 +1053,13 @@ button,
 }
 :root[data-theme="light"] .bob-agreement-clause {
   color: #1b1f23;
+}
+:root[data-theme="light"] .bob-team-part-label {
+  color: #57606a;
+}
+:root[data-theme="light"] .bob-team-name {
+  color: #1b1f23;
+}
+:root[data-theme="light"] .bob-team-detail {
+  color: #57606a;
 }

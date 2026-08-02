@@ -173,10 +173,18 @@ class BoardOfBoardsLogic:
                 "unsettled_count": unsettled,
                 "agenda_count": len(self.session.agenda_items(node.uuid)),
                 "expanded": expanded,
-                # The whole document, but only for the tile that is showing
-                # it - every summary carries this on a 1.5s poll otherwise.
+                # A team is its agreement, its actors and its roles, and the
+                # enlarged tile shows all three. Only for the tile that is
+                # showing them - every summary carries this on a 1.5s poll
+                # otherwise.
                 "sections": (
                     self._agreement_sections(agreement, node) if expanded else []
+                ),
+                "actors": (
+                    self._agreement_actors(agreement, node) if expanded else []
+                ),
+                "roles": (
+                    self._agreement_roles(agreement, node) if expanded else []
                 ),
                 "order": order.get(node.uuid, 0),
                 "_transition_by_node": grouped,
@@ -196,6 +204,47 @@ class BoardOfBoardsLogic:
                 ],
             }
             for section in facade.sections(agreement)
+        ]
+
+    @staticmethod
+    def _agreement_actors(facade, agreement: ProtocolNode) -> list[dict]:
+        """Who is in this team, and what each of them holds.
+
+        Only accepted roles are named here. A tile has room for what is
+        settled, not for every offer still being answered - the team
+        application is where an offer is acted on.
+        """
+        return [
+            {
+                "uuid": person.get("uuid", ""),
+                "name": person.get("name", ""),
+                "picture": person.get("picture", ""),
+                "actor_kind": person.get("actor_kind", "individual"),
+                "is_self": bool(person.get("is_self")),
+                "is_observer": bool(person.get("is_observer")),
+                "roles": [
+                    item.get("name", "")
+                    for item in person.get("roles", [])
+                    if item.get("status") == "accepted"
+                ],
+            }
+            for person in facade.participants(agreement.uuid)
+        ]
+
+    @staticmethod
+    def _agreement_roles(facade, agreement: ProtocolNode) -> list[dict]:
+        """Every role this team defines, and who is holding it."""
+        return [
+            {
+                "uuid": role.uuid,
+                "name": role.data.get("name", ""),
+                "holders": [
+                    holder.get("name", "")
+                    for holder in facade.role_holders(agreement, role)
+                    if holder.get("status") == "accepted"
+                ],
+            }
+            for role in facade.roles(agreement)
         ]
 
     def _agreement_order(self, *, mutable: bool = False) -> dict:
@@ -391,16 +440,18 @@ class BoardOfBoardsLogic:
         # Which topic-creating applications this host can offer in the
         # "+ Add new" menu - the cockpit itself creates neither, it only
         # routes to whichever facade is present.
-        creatable = [{"application_id": INITIATIVE_APPLICATION_ID, "label": "Board"}]
+        creatable = [
+            {"application_id": INITIATIVE_APPLICATION_ID, "label": "Initiative"},
+        ]
         if self._agreement() is not None:
             creatable.append(
-                {"application_id": TEAM_APPLICATION_ID, "label": "Agreement"}
+                {"application_id": TEAM_APPLICATION_ID, "label": "Team"}
             )
         if self._flow() is not None:
             creatable.append(
                 {
                     "application_id": FLOW_APPLICATION_ID,
-                    "label": "Process",
+                    "label": "Flow",
                 }
             )
         agreements = self._agreement_summaries(network_by_topic)
@@ -676,10 +727,9 @@ class BoardOfBoardsLogic:
                 continue
             top = max(
                 visible,
-                key=lambda event: int(event.get(
-                    "priority",
-                    Session.TRANSITION_PRIORITY.get(event.get("type"), 0),
-                )),
+                key=lambda event: tuple(
+                    event.get("priority") or Session.transition_rank(event),
+                ),
             )
             merged = dict(top)
             if any(event.get("type") != "in_agreement" for event in visible):
@@ -691,7 +741,7 @@ class BoardOfBoardsLogic:
     def _transition_is_visible(
         event: dict, network: dict, policy: str | None,
     ) -> bool:
-        if event.get("type") != "in_transition":
+        if event.get("stage") != "in_flight":
             return True
         peer = ((network.get("peers") or {}).get(
             event.get("peer_addr"),
@@ -794,7 +844,7 @@ class BoardOfBoardsLogic:
     ) -> set[str]:
         card_uuids = set()
         for event in self.kanban.transition_events(board.uuid, network):
-            if event.get("type") in ("in_agreement", "in_transition"):
+            if event.get("stage") in ("settled", "in_flight"):
                 continue
             node_uuid = event.get("node_uuid")
             if not node_uuid:

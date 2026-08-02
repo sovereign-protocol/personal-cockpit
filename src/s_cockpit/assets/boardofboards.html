@@ -9,7 +9,7 @@
   </head>
   <body>
     <div id="toast" class="toast"></div>
-    <!-- The shell owns the bar; "+ New board" is handed to its
+    <!-- The shell owns the bar; "+ Add new…" is handed to its
          application-actions slot. -->
     <header class="bob-topbar"><div id="shell"></div></header>
 
@@ -44,10 +44,10 @@
 
     <dialog id="boardSettingsModal">
       <div class="bob-manage">
-        <h2 id="boardSettingsTitle">Board settings</h2>
+        <h2 id="boardSettingsTitle">Initiative settings</h2>
         <div id="boardSettingsFields"></div>
         <menu>
-          <button type="button" id="deleteBoardSettingsBtn" class="danger">Delete board</button>
+          <button type="button" id="deleteBoardSettingsBtn" class="danger">Delete initiative</button>
           <button type="button" id="cancelBoardSettingsBtn">Cancel</button>
           <button type="button" id="saveBoardSettingsBtn" class="primary">Save</button>
         </menu>
@@ -56,13 +56,13 @@
 
     <dialog id="agreementSettingsModal">
       <div class="bob-manage">
-        <h2 id="agreementSettingsTitle">Agreement settings</h2>
+        <h2 id="agreementSettingsTitle">Team settings</h2>
         <p class="bob-hint">
-          An agreement has nothing to map onto bands the way a board does, so this is where deleting
+          A team has nothing to map onto bands the way an initiative does, so this is where deleting
           one lives.
         </p>
         <menu>
-          <button type="button" id="deleteAgreementBtn" class="danger">Delete agreement</button>
+          <button type="button" id="deleteAgreementBtn" class="danger">Delete team</button>
           <button type="button" id="cancelAgreementSettingsBtn">Cancel</button>
         </menu>
       </div>
@@ -70,8 +70,8 @@
 
     <dialog id="newBoardModal">
       <form method="dialog" id="newBoardForm">
-        <h2>New board</h2>
-        <label>Name<input id="newBoardName" value="Kanban Board" /></label>
+        <h2>New Initiative</h2>
+        <label>Name<input id="newBoardName" value="Untitled initiative" /></label>
         <label>Copy from (optional)<select id="newBoardTemplate"></select></label>
         <menu>
           <button type="button" id="cancelNewBoardBtn">Cancel</button>
@@ -82,8 +82,8 @@
 
     <dialog id="newAgreementModal">
       <form method="dialog" id="newAgreementForm">
-        <h2>New agreement</h2>
-        <label>Name<input id="newAgreementName" value="Untitled agreement" /></label>
+        <h2>New Team</h2>
+        <label>Name<input id="newAgreementName" value="Untitled team" /></label>
         <label>Copy from (optional)<select id="newAgreementTemplate"></select></label>
         <menu>
           <button type="button" id="cancelNewAgreementBtn">Cancel</button>
@@ -228,7 +228,7 @@
         const collapsed = tiles.filter((tile) => !tile.expanded);
         expanded.forEach((tile, index) => {
           container.append(
-            tile.application_id === "agreement"
+            tile.application_id === "team"
               ? renderExpandedAgreement(tile, index, expanded.length)
               : tile.application_id === "flow"
                 ? renderFlowTile(tile, index, expanded.length)
@@ -240,7 +240,7 @@
           lane.className = "bob-collapsed-lane";
           group.forEach((tile, i) =>
             lane.append(
-              tile.application_id === "agreement"
+              tile.application_id === "team"
                 ? renderAgreementTile(tile, chunkIndex * 5 + i, collapsed.length)
                 : tile.application_id === "flow"
                   ? renderFlowTile(tile, chunkIndex * 5 + i, collapsed.length)
@@ -263,7 +263,7 @@
         link.className = "shell-topic-name";
         link.textContent = topic.title;
         link.href =
-          topic.application_id === "agreement"
+          topic.application_id === "team"
             ? `/apps/team?agreement=${encodeURIComponent(topic.uuid)}`
             : topic.application_id === "flow"
               ? `/apps/flow?process_uuid=${encodeURIComponent(topic.uuid)}`
@@ -363,7 +363,7 @@
         main.append(
           topicTitle(
             "flow",
-            process.title || "Untitled process",
+            process.title || "Untitled flow",
             `/apps/flow?process_uuid=${encodeURIComponent(process.uuid)}`,
           ),
         );
@@ -402,7 +402,14 @@
         panel.className = "bob-board expanded bob-agreement-tile";
         makeTopicSelectable(panel, agreement);
         panel.append(agreementHeader(agreement, index, total));
-        panel.append(agreementDocument(agreement));
+        // A team is three parts, and the enlarged tile shows all of them in
+        // the order they are agreed: what was agreed, who is in it, and what
+        // they hold.
+        panel.append(
+          teamPart("Agreement", agreementDocument(agreement)),
+          teamPart("Actors", agreementActors(agreement)),
+          teamPart("Roles", agreementRoles(agreement)),
+        );
         return panel;
       }
 
@@ -416,7 +423,7 @@
         main.className = "bob-board-main";
         const title = topicTitle(
           "agreement",
-          agreement.title || "Untitled agreement",
+          agreement.title || "Untitled team",
           `/apps/team?agreement=${encodeURIComponent(agreement.uuid)}`,
         );
         main.append(title);
@@ -455,19 +462,39 @@
         return status;
       }
 
+      // One part of a team - its name, and the box that shows it. The three
+      // parts share a shape so the tile reads as one thing rather than three.
+      function teamPart(label, body) {
+        const part = document.createElement("div");
+        part.className = `bob-team-part bob-team-part-${label.toLowerCase()}`;
+        const heading = document.createElement("h3");
+        heading.className = "bob-team-part-label";
+        heading.textContent = label;
+        part.append(heading, body);
+        return part;
+      }
+
+      // Loading and empty are different facts, and a part that is still
+      // arriving must not claim there is nothing in it.
+      function teamPartHint(agreement, emptyText) {
+        const hint = document.createElement("p");
+        hint.className = "bob-hint";
+        hint.textContent = agreement.optimistic_loading
+          ? "Loading team..."
+          : emptyText;
+        return hint;
+      }
+
       function agreementDocument(agreement) {
-        // Read-only: the tile shows the agreement, the agreement application
+        // Read-only: the tile shows the agreement, the team application
         // is where it is edited. The title above already links there.
         const wrap = document.createElement("div");
         wrap.className = "bob-agreement-document";
         const sections = agreement.sections || [];
         if (!sections.length) {
-          const empty = document.createElement("p");
-          empty.className = "bob-hint";
-          empty.textContent = agreement.optimistic_loading
-            ? "Loading agreement..."
-            : "This agreement has no sections yet.";
-          wrap.append(empty);
+          wrap.append(
+            teamPartHint(agreement, "Nothing has been agreed yet."),
+          );
           return wrap;
         }
         for (const section of sections) {
@@ -482,6 +509,66 @@
           }
         }
         return wrap;
+      }
+
+      // Who is in the team, and what each of them holds. Only settled
+      // holdings are named: an offer still being answered belongs in the
+      // team application, where it can be answered.
+      function agreementActors(agreement) {
+        const wrap = document.createElement("div");
+        wrap.className = "bob-agreement-document bob-team-list";
+        const actors = agreement.actors || [];
+        if (!actors.length) {
+          wrap.append(teamPartHint(agreement, "Nobody has joined yet."));
+          return wrap;
+        }
+        for (const actor of actors) {
+          wrap.append(
+            teamRow(
+              actor.name || "Unknown actor",
+              actor.roles?.length ? actor.roles.join(", ") : "Observer",
+              SovereignUI.avatar(actor, {
+                className: "participant-avatar",
+                self: actor.is_self,
+                title: actor.name || "Unknown actor",
+              }),
+            ),
+          );
+        }
+        return wrap;
+      }
+
+      function agreementRoles(agreement) {
+        const wrap = document.createElement("div");
+        wrap.className = "bob-agreement-document bob-team-list";
+        const roles = agreement.roles || [];
+        if (!roles.length) {
+          wrap.append(teamPartHint(agreement, "No roles yet."));
+          return wrap;
+        }
+        for (const role of roles) {
+          wrap.append(
+            teamRow(
+              role.name || "Untitled role",
+              role.holders?.length ? role.holders.join(", ") : "Unheld",
+            ),
+          );
+        }
+        return wrap;
+      }
+
+      function teamRow(name, detail, avatar) {
+        const row = document.createElement("div");
+        row.className = "bob-team-row";
+        if (avatar) row.append(avatar);
+        const label = document.createElement("span");
+        label.className = "bob-team-name";
+        label.textContent = name;
+        const meta = document.createElement("span");
+        meta.className = "bob-team-detail";
+        meta.textContent = detail;
+        row.append(label, meta);
+        return row;
       }
 
       function setAgreementExpanded(agreement, expanded) {
@@ -762,14 +849,8 @@
 
       function applyCardTransition(row, card) {
         const info = card.transition;
-        if (!info || info.type === "in_agreement") return;
-        if (info.type === "in_transition") {
-          row.classList.add("in-transition");
-          row.title = transitionLabel(info);
-          return;
-        }
-        row.classList.add("diff", `event-${info.type}`);
-        row.dataset.transitionSymbol = transitionSymbol(info.type);
+        if (!info || info.stage === "settled") return;
+        row.classList.add("diff", `stage-${info.stage}`);
         row.title = transitionLabel(info);
       }
 
@@ -777,7 +858,7 @@
         const wrap = document.createElement("div");
         wrap.className = "bob-card-discussion-tools";
         const info = card.transition;
-        if (!info || ["in_agreement", "in_transition"].includes(info.type)) return wrap;
+        if (!info || ["settled", "in_flight"].includes(info.stage)) return wrap;
         wrap.append(reactionButton(card));
         return wrap;
       }
@@ -792,23 +873,13 @@
         const events = (card.transition?.events || [card.transition]).filter(
           (event) => event && event.type !== "in_agreement",
         );
-        const reactions = events.map((event) => {
-          const action = event.reaction || "adopt";
-          const actor = transitionActorLabel(event);
-          const changes = eventChangeSummary(event, 6) || "complete peer version";
-          if (action === "rollback") {
-            return {
-              label: `Roll back to my previous version held by ${actor}`,
-              action,
-              event,
-            };
-          }
-          return {
-            label: `Adopt ${changes} (from ${actor})`,
-            action,
-            event,
-          };
-        });
+        const reactions = events.map((event) => ({
+          // Same wording as Kanban, from Core: named for the act, from the
+          // side being offered the choice.
+          label: transitionReactionLabel(event),
+          action: event.reaction || "adopt",
+          event,
+        }));
         button.onclick = (event) => {
           event.stopPropagation();
           openReactionMenu(button, card, reactions);
@@ -834,9 +905,7 @@
           option.onclick = async (event) => {
             event.stopPropagation();
             closeReactionMenu();
-            const missing = [reaction.event.type, reaction.event.original_type].includes(
-              "peer_missing_node",
-            );
+            const missing = reaction.event.type === "peer_missing_node";
             const endpoint =
               reaction.action === "rollback"
                 ? "/api/cockpit/kanban/rollback"
@@ -1055,7 +1124,7 @@
 
       function openAgreementSettings(agreement) {
         settingsAgreement = agreement;
-        el("agreementSettingsTitle").textContent = agreement.title || "Untitled agreement";
+        el("agreementSettingsTitle").textContent = agreement.title || "Untitled team";
         el("agreementSettingsModal").showModal();
       }
 
@@ -1084,8 +1153,8 @@
         const board = settingsBoard;
         if (!board) return;
         confirmAction(
-          "Delete this board?",
-          "This removes the board and all of its cards. This cannot be undone.",
+          "Delete this initiative?",
+          "This removes the initiative and all of its cards. This cannot be undone.",
           () => {
             el("boardSettingsModal").close();
             return run(
@@ -1093,7 +1162,7 @@
                 request("/api/cockpit/kanban/boards/delete", {
                   board_uuid: board.uuid,
                 }),
-              "Board deleted",
+              "Initiative deleted",
             );
           },
         );
@@ -1103,8 +1172,8 @@
         const agreement = settingsAgreement;
         if (!agreement) return;
         confirmAction(
-          "Delete this agreement?",
-          "This removes the agreement and all of its sections and clauses, " +
+          "Delete this team?",
+          "This removes the team and all of its sections and clauses, " +
             "and stops sharing it. This cannot be undone.",
           () => {
             el("agreementSettingsModal").close();
@@ -1113,7 +1182,7 @@
                 request("/api/cockpit/agreement/agreements/delete", {
                   agreement_uuid: agreement.uuid,
                 }),
-              "Agreement deleted",
+              "Team deleted",
             );
           },
         );
@@ -1235,7 +1304,7 @@
       el("deleteCardBtn").onclick = () => {
         const card = modalCard;
         if (!card) return;
-        confirmAction("Delete card?", "This removes the card from its board.", () => {
+        confirmAction("Delete card?", "This removes the card from its initiative.", () => {
           el("cardModal").close();
           return run(
             (request) =>
@@ -1271,7 +1340,7 @@
         state: () => state || {},
         agendaRoutes: () => {
           const app = state?.selected_topic?.application_id;
-          if (app === "agreement") {
+          if (app === "team") {
             return {
               topicKey: "agreement_uuid",
               create: "/api/cockpit/agreement/agenda/create",
@@ -1280,7 +1349,7 @@
               move: "/api/cockpit/agreement/agenda/move",
             };
           }
-          if (app === "kanban") {
+          if (app === "initiative") {
             return {
               topicKey: "board_uuid",
               create: "/api/cockpit/kanban/agenda/create",
@@ -1301,7 +1370,7 @@
           return null;
         },
         autoAdoptRoute: () =>
-          state?.selected_topic?.application_id === "kanban"
+          state?.selected_topic?.application_id === "initiative"
             ? { path: "/api/cockpit/kanban/auto_adopt", topicKey: "board_uuid" }
             : null,
         autoAdoptLabels: AUTO_ADOPT_LABELS,
@@ -1317,7 +1386,7 @@
       // template modal; a new agreement appears as a tile, and you stay here
       // to keep adding, exactly as creating a board leaves you here.
       function openNewBoardModal() {
-        el("newBoardName").value = "Kanban Board";
+        el("newBoardName").value = "Untitled initiative";
         const select = el("newBoardTemplate");
         select.replaceChildren();
         const empty = document.createElement("option");
@@ -1338,7 +1407,7 @@
       // An agreement copied this way arrives with the text and the roles and
       // nobody in it, which is what a template is.
       function openNewAgreementModal() {
-        el("newAgreementName").value = "Untitled agreement";
+        el("newAgreementName").value = "Untitled team";
         const select = el("newAgreementTemplate");
         select.replaceChildren();
         const empty = document.createElement("option");
@@ -1348,7 +1417,7 @@
         for (const agreement of state.agreements || []) {
           const opt = document.createElement("option");
           opt.value = agreement.uuid;
-          opt.textContent = agreement.title || "Untitled agreement";
+          opt.textContent = agreement.title || "Untitled team";
           select.append(opt);
         }
         el("newAgreementModal").showModal();
@@ -1358,11 +1427,11 @@
         return run(
           (request) =>
             request("/api/cockpit/flow/processes/create", {
-              title: "Untitled process",
+              title: "Untitled flow",
               definition_id: "integrative-election",
               definition_version: "0.2.0",
             }),
-          "Process created",
+          "Flow created",
         );
       }
 
@@ -1378,13 +1447,13 @@
           return;
         }
         menu.replaceChildren();
-        for (const item of state.creatable || [{ application_id: "kanban", label: "Board" }]) {
+        for (const item of state.creatable || []) {
           const choice = document.createElement("button");
           choice.type = "button";
           choice.textContent = item.label;
           choice.onclick = () => {
             closeAddNewMenu();
-            if (item.application_id === "agreement") openNewAgreementModal();
+            if (item.application_id === "team") openNewAgreementModal();
             else if (item.application_id === "flow") createFlow();
             else openNewBoardModal();
           };
@@ -1419,13 +1488,13 @@
             return result;
           }
           return request("/api/cockpit/kanban/boards/create", { name });
-        }, "Board created");
+        }, "Initiative created");
       });
 
       el("cancelNewAgreementBtn").onclick = () => el("newAgreementModal").close();
       el("newAgreementForm").addEventListener("submit", (event) => {
         event.preventDefault();
-        const title = el("newAgreementName").value || "Untitled agreement";
+        const title = el("newAgreementName").value || "Untitled team";
         const templateUuid = el("newAgreementTemplate").value;
         el("newAgreementModal").close();
         // One request either way: clone takes the title, so unlike a board
@@ -1440,7 +1509,7 @@
               : request("/api/cockpit/agreement/agreements/create", {
                   title,
                 }),
-          "Agreement created",
+          "Team created",
         );
       });
 

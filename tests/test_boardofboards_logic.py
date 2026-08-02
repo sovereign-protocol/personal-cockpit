@@ -49,6 +49,7 @@ class _StubTeamFacade:
         self.session = session
         self.uuids = []
         self.observed_networks = []
+        self.holders = {}
 
     def create(self, title):
         node = self.session.create_child(
@@ -71,6 +72,24 @@ class _StubTeamFacade:
             {},
         ).value.uuid
 
+    def add_role(self, agreement_uuid, name, order=0):
+        return self.session.create_child(
+            agreement_uuid,
+            {"type": "agreement_role", "name": name, "order": order},
+            {},
+        ).value.uuid
+
+    def hold_role(self, role_uuid, name, status="accepted"):
+        """Somebody offered this role, and where their answer stands."""
+        self.holders.setdefault(role_uuid, []).append({
+            "actor_uuid": f"actor-{name}",
+            "name": name,
+            "picture": "",
+            "actor_kind": "individual",
+            "is_self": False,
+            "status": status,
+        })
+
     def agreements(self):
         nodes = [self.session.protocol.index.get(uuid) for uuid in self.uuids]
         return [node for node in nodes if node and not node.deleted]
@@ -80,6 +99,34 @@ class _StubTeamFacade:
 
     def clauses(self, section):
         return self._ordered(section, "agreement_clause")
+
+    def roles(self, agreement):
+        return self._ordered(agreement, "agreement_role")
+
+    def role_holders(self, agreement, role):
+        return list(self.holders.get(role.uuid, []))
+
+    def participants(self, agreement_uuid):
+        # Actors are who holds something here, and each is listed with what
+        # they hold - an actor holding nothing accepted is an observer.
+        agreement = self.session.protocol.index.get(agreement_uuid)
+        people = {}
+        for role in self.roles(agreement):
+            for holder in self.role_holders(agreement, role):
+                person = people.setdefault(
+                    holder["actor_uuid"],
+                    {**holder, "uuid": holder["actor_uuid"], "roles": []},
+                )
+                person["roles"].append({
+                    "uuid": role.uuid,
+                    "name": role.data.get("name", ""),
+                    "status": holder["status"],
+                })
+        for person in people.values():
+            person["is_observer"] = not any(
+                item["status"] == "accepted" for item in person["roles"]
+            )
+        return list(people.values())
 
     @staticmethod
     def _ordered(parent, node_type):
@@ -459,7 +506,10 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertEqual(summary["discussion_count"], 1)
         self.assertEqual(summary["column_count"], 3)
         transition = summary["active_cards"][0]["transition"]
-        self.assertEqual(transition["type"], "divergence")
+        # My own edit that the peer has observed but not answered: the
+        # relation is that I changed it, and it is waiting on them.
+        self.assertEqual(transition["type"], "local_made_changes")
+        self.assertEqual(transition["stage"], "awaiting_peer")
         self.assertEqual(transition["peer_addr"], "relay:peer")
         perspectives = summary["active_cards"][0]["perspectives"]
         self.assertEqual(len(perspectives), 1)
@@ -827,7 +877,7 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
         self.assertEqual(payload["selected_topic"]["uuid"], process_uuid)
         self.assertIn(process_uuid, payload["tile_order"])
         self.assertIn(
-            {"application_id": "flow", "label": "Process"},
+            {"application_id": "flow", "label": "Flow"},
             payload["creatable"],
         )
         tile = payload["processes"][0]
@@ -862,12 +912,45 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
             ["We decide by consent.", "Anyone may add an item."],
         )
 
+    def test_enlarging_a_team_carries_its_actors_and_roles_as_well(self):
+        # A team is three parts, so the enlarged tile that shows only the
+        # agreement is showing a third of one.
+        runtime = self.runtime(8531)
+        agreement = _StubTeamFacade(runtime.session)
+        bob = cockpit(runtime, agreement)
+        agreement_uuid = agreement.create("Working agreement")
+        secretary = agreement.add_role(agreement_uuid, "Secretary", order=0)
+        treasurer = agreement.add_role(agreement_uuid, "Treasurer", order=1)
+        agreement.hold_role(secretary, "Andrea")
+        # Offered but not answered: nobody holds it, and the actor it was
+        # offered to is in the team without holding anything.
+        agreement.hold_role(treasurer, "Bo", status="pending")
+
+        self.assertEqual(
+            bob.set_agreement_expanded(agreement_uuid, True).status, "ok",
+        )
+        summary = bob.summary_payload()["agreements"][0]
+
+        self.assertEqual(
+            [(role["name"], role["holders"]) for role in summary["roles"]],
+            [("Secretary", ["Andrea"]), ("Treasurer", [])],
+        )
+        self.assertEqual(
+            [
+                (actor["name"], actor["roles"], actor["is_observer"])
+                for actor in summary["actors"]
+            ],
+            [("Andrea", ["Secretary"], False), ("Bo", [], True)],
+        )
+
     def test_collapsing_an_agreement_drops_the_document_again(self):
         runtime = self.runtime(8526)
         agreement = _StubTeamFacade(runtime.session)
         bob = cockpit(runtime, agreement)
         agreement_uuid = agreement.create("Working agreement")
         agreement.add_section(agreement_uuid, "Purpose")
+        role = agreement.add_role(agreement_uuid, "Secretary")
+        agreement.hold_role(role, "Andrea")
         bob.set_agreement_expanded(agreement_uuid, True)
 
         bob.set_agreement_expanded(agreement_uuid, False)
@@ -875,6 +958,10 @@ class BoardOfBoardsLogicTests(unittest.TestCase):
 
         self.assertFalse(summary["expanded"])
         self.assertEqual(summary["sections"], [])
+        # All three parts are dropped together - carrying actors and roles on
+        # a collapsed tile costs the same 1.5s poll the document does.
+        self.assertEqual(summary["actors"], [])
+        self.assertEqual(summary["roles"], [])
 
     def test_missing_agreement_is_ignored_without_mutating_during_a_read(self):
         runtime = self.runtime(8527)

@@ -1,0 +1,12 @@
+{
+  "applications": [
+    {"module": "s_initiative.application"},
+    {"module": "s_team.application"},
+    {"module": "s_flow.application"},
+    {"module": "s_cockpit.application"}
+  ],
+  "primary_application_id": "cockpit",
+  "header_title": "S-Cockpit",
+  "advertise_host": "127.0.0.1",
+  "offer_http_channel": true
+}

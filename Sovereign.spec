@@ -35,7 +35,7 @@ hiddenimports = []
 # runtime and PyInstaller cannot see through that.
 for package in (
     "uvicorn", "webview",
-    "sovereign", "s_cockpit", "s_initiative", "s_team",
+    "sovereign", "s_cockpit", "s_initiative", "s_team", "s_flow",
 ):
     package_datas, package_binaries, package_hiddenimports = collect_all(package)
     datas += package_datas

@@ -29,6 +29,7 @@ WINDOW_TITLE = "Sovereign"
 OPTIONAL_APPLICATIONS = (
     ("s_initiative", "s_initiative.application"),
     ("s_team", "s_team.application"),
+    ("s_flow", "s_flow.application"),
 )
 
 

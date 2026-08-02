@@ -1,6 +1,6 @@
 """The combined desktop entry, including what it does when producers are absent.
 
-A5 makes S-Initiative and S-Team optional, late-bound producers. The
+A5 makes S-Initiative, S-Team and S-Flow optional, late-bound producers. The
 executable mounts whichever are installed, so the interesting case is not the
 happy one - it is starting with fewer.
 """
@@ -42,7 +42,10 @@ class InstalledApplicationTests(unittest.TestCase):
 
         self.assertEqual(
             _modules(applications),
-            ["s_initiative.application", "s_team.application", COCKPIT_MODULE],
+            [
+                "s_initiative.application", "s_team.application",
+                "s_flow.application", COCKPIT_MODULE,
+            ],
         )
 
 
